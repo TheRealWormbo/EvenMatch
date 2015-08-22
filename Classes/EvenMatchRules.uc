@@ -81,13 +81,12 @@ static function FillPlayInfo(PlayInfo PlayInfo)
 
 function SwapSides()
 {
-	local int i;
+	local ONSPowerCore C;
 	
-	for (i = 0; i < Game.PowerCores.Length; ++i) {
-		if (Game.PowerCores[i].DefenderTeamIndex < 2) {
-			Game.PowerCores[i].DefenderTeamIndex = 1 - Game.PowerCores[i].DefenderTeamIndex;
-			if (Game.PowerCores[i].bFinalCore)
-				Game.FinalCore[Game.PowerCores[i].DefenderTeamIndex] = i;
+	// This happens before ONSOnslaughtGame.PowerCores[] is set up!
+	foreach AllActors(class'ONSPowerCore', C) {
+		if (C.DefenderTeamIndex < 2) {
+			C.DefenderTeamIndex = 1 - C.DefenderTeamIndex;
 		}
 	}
 	// might cause problems on round restart if False

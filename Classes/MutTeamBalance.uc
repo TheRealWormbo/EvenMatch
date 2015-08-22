@@ -411,6 +411,9 @@ function bool IsRecentBalancer(Controller C)
 	if (i > 0) {
 		do {} until (--i < 0 || RecentTeams[i].PC == C);
 	}
+	else {
+		i--;
+	}
 	return i >= 0 && Level.TimeSeconds - RecentTeams[i].LastForcedSwitch < 60; 
 }
 
