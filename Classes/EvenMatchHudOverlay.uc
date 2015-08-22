@@ -23,6 +23,7 @@ class EvenMatchHudOverlay extends HudOverlay;
 
 var() int ProgressMaxYaw;
 var() float ProgressUpdateSpeed;
+var() export Material ArrowExportDummy; // ensures the TexRotator subobject is generated again on export
 var() HudBase.SpriteWidget ProgressArrowWidget;
 var() HudBase.SpriteWidget ProgressBackgroundDisc;
 
@@ -114,6 +115,7 @@ defaultproperties
 		UOffset = 64
 		VOffset = 64
 	End Object
+	ArrowExportDummy = ProgressArrowRotator
 	
 	ProgressArrowWidget = (WidgetTexture=TexRotator'ProgressArrowRotator',PosX=0.5,PosY=0.0,OffsetX=0,OffsetY=50,DrawPivot=DP_UpperMiddle,RenderStyle=STY_Alpha,TextureCoords=(X1=0,Y1=0,X2=128,Y2=128),TextureScale=0.25,ScaleMode=SM_Right,Scale=1.000000,Tints[0]=(G=160,R=0,B=0,A=255),Tints[1]=(G=160,R=0,B=0,A=255))
 	ProgressBackgroundDisc = (WidgetTexture=Texture'HudContent.Generic.HUD',PosX=0.5,PosY=0.0,OffsetX=0,OffsetY=15,DrawPivot=DP_UpperMiddle,RenderStyle=STY_Alpha,TextureCoords=(X1=119,Y1=258,X2=173,Y2=313),TextureScale=0.53,ScaleMode=SM_Right,Scale=1.000000,Tints[0]=(G=255,R=255,B=255,A=255),Tints[1]=(G=255,R=255,B=255,A=255))
