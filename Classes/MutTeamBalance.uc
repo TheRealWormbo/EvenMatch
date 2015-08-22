@@ -97,14 +97,6 @@ function PostBeginPlay()
 	}
 	if (Level.NetMode == NM_DedicatedServer && !PlatformIsWindows())
 		ApplyLinuxDedicatedServerCrashFix();
-	
-	if (TeamsCallString != "") {
-		TeamsCallSpec = Spawn(class'EvenMatchTeamsCallSpectator');
-		if (TeamsCallSpec != None) {
-			TeamsCallSpec.EvenMatchMutator = Self;
-			TeamsCallSpec.TeamsCallString = TeamsCallString;
-		}
-	}
 }
 
 function ApplyLinuxDedicatedServerCrashFix()
@@ -133,6 +125,14 @@ function bool MutatorIsAllowed()
 function MatchStarting()
 {
 	SetTimer(1.0, true);
+	
+	if (TeamsCallString != "") {
+		TeamsCallSpec = Spawn(class'EvenMatchTeamsCallSpectator');
+		if (TeamsCallSpec != None) {
+			TeamsCallSpec.EvenMatchMutator = Self;
+			TeamsCallSpec.TeamsCallString = TeamsCallString;
+		}
+	}
 }
 
 function Mutate(string MutateString, PlayerController Sender)
@@ -148,10 +148,10 @@ function Mutate(string MutateString, PlayerController Sender)
 function HandleTeamsCall(PlayerController Sender)
 {
 	if (Sender != None && Sender.PlayerReplicationInfo != None) {
-		if ((!Sender.PlayerReplicationInfo.bOnlySpectator || Sender.PlayerReplicationInfo.bAdmin || Level.Game.AccessControl != None && Level.Game.AccessControl.IsAdmin(Sender)) && (bBalanceTeamsDuringOvertime || !Level.Game.bOverTime) && SoftRebalanceCountdown < 0 && !bBalancingRequested && IsBalancingActive()) {
+		if ((!Sender.PlayerReplicationInfo.bOnlySpectator || Sender.PlayerReplicationInfo.bAdmin || Level.Game.AccessControl != None && Level.Game.AccessControl.IsAdmin(Sender)) && SoftRebalanceCountdown != 0 && !bBalancingRequested && IsBalancingActive()) {
 			if (RebalanceNeeded()) {
 				bBalancingRequested = True;
-				SoftRebalanceCountdown = SoftRebalanceDelay;
+				SoftRebalanceCountdown = 0;
 				BroadcastLocalizedMessage(class'UnevenMessage', -2, Sender.PlayerReplicationInfo);
 			}
 			else {
@@ -173,7 +173,7 @@ function bool IsBalancingActive()
 			NumPlayers++;
 	}
 	
-	return Level.GRI.bMatchHasBegun && !Level.Game.bGameEnded && Game.ElapsedTime >= default.ActivationDelay && NumPlayers >= MinPlayerCount;
+	return Level.GRI.bMatchHasBegun && !Level.Game.bGameEnded && (bBalanceTeamsDuringOvertime || !Level.Game.bOverTime) && Game.ElapsedTime >= default.ActivationDelay && NumPlayers >= MinPlayerCount;
 }
 
 
@@ -487,6 +487,7 @@ function ActuallyCheckBalance(PlayerController Player, bool bIsLeaving)
 			SoftRebalanceCountdown = SoftRebalanceDelay;
 			ForcedRebalanceCountdown = -1; // not yet!
 		}
+		
 		if (SoftRebalanceCountdown == 0) {
 			if (ForcedRebalanceCountdown < 0 && ForcedRebalanceDelay > 0) {
 				BroadcastLocalizedMessage(class'UnevenChatMessage', 3);
@@ -522,46 +523,46 @@ function ActuallyCheckBalance(PlayerController Player, bool bIsLeaving)
 					Candidates.Remove(i, 1);
 				}
 			}
-		}
-		if (Candidates.Length == 0 && RebalanceStillNeeded(SizeOffset, Progress, BiggerTeam)) {
-			if (ForcedRebalanceCountdown < 0) {
-				log("Teams are uneven, forced balance in " $ ForcedRebalanceDelay $ "s", 'EvenMatch');
-				ForcedRebalanceCountdown = ForcedRebalanceDelay;
-			}
-			
-			if (ForcedRebalanceCountdown % 10 == 0)
-				BroadcastLocalizedMessage(class'UnevenChatMessage', ForcedRebalanceCountdown / 10 + 4);
+			if (Candidates.Length == 0 && RebalanceStillNeeded(SizeOffset, Progress, BiggerTeam)) {
+				if (ForcedRebalanceCountdown < 0) {
+					log("Teams are uneven, forced balance in " $ ForcedRebalanceDelay $ "s", 'EvenMatch');
+					ForcedRebalanceCountdown = ForcedRebalanceDelay;
+				}
+				
+				if (ForcedRebalanceCountdown % 10 == 0 && ForcedRebalanceCountdown < ForcedRebalanceDelay)
+					BroadcastLocalizedMessage(class'UnevenChatMessage', ForcedRebalanceCountdown / 10 + 4);
 
-			if (ForcedRebalanceCountdown == 0) {
-				// time is up, random alive players on the bigger team will be switched to the smaller team
-				for (C = Level.ControllerList; C != None; C = C.NextController) {
-					if ((!bIsLeaving || C != Player) && PlayerController(C) != None && C.GetTeamNum() == BiggerTeam && !IsKeyPlayer(C)) {
-						Candidates[Candidates.Length] = PlayerController(C);
-						if (bDebug) log(Level.TimeSeconds $ " Forced balancing candidate: " $ C.GetHumanReadableName(), 'EvenMatchDebug');
+				if (ForcedRebalanceCountdown == 0) {
+					// time is up, random alive players on the bigger team will be switched to the smaller team
+					for (C = Level.ControllerList; C != None; C = C.NextController) {
+						if ((!bIsLeaving || C != Player) && PlayerController(C) != None && C.GetTeamNum() == BiggerTeam && !IsKeyPlayer(C)) {
+							Candidates[Candidates.Length] = PlayerController(C);
+							if (bDebug) log(Level.TimeSeconds $ " Forced balancing candidate: " $ C.GetHumanReadableName(), 'EvenMatchDebug');
+						}
 					}
-				}
-				while (Candidates.Length > 0 && RebalanceStillNeeded(SizeOffset, Progress, BiggerTeam)) {
-					// try switching a random candidate to the smaller team
-					i = Rand(Candidates.Length);
-					Game.ChangeTeam(Candidates[i], 1 - BiggerTeam, true);
-					RememberForcedSwitch(Candidates[i], "forced balance");
-					if (Candidates[i].Pawn != None) {
-						if (Vehicle(Candidates[i].Pawn) != None && Vehicle(Candidates[i].Pawn).Driver != None)
-							Vehicle(Candidates[i].Pawn).Driver.Died(None, class'DamTypeTeamChange', Vehicle(Candidates[i].Pawn).Driver.Location);
-						else if (XPawn(Candidates[i].Pawn) != None)
-							Candidates[i].Pawn.Died(None, class'DamTypeTeamChange', Candidates[i].Pawn.Location);
-						else // maybe also do special handling for redeemer?
-							Candidates[i].Pawn.PlayerChangedTeam();
+					while (Candidates.Length > 0 && RebalanceStillNeeded(SizeOffset, Progress, BiggerTeam)) {
+						// try switching a random candidate to the smaller team
+						i = Rand(Candidates.Length);
+						Game.ChangeTeam(Candidates[i], 1 - BiggerTeam, true);
+						RememberForcedSwitch(Candidates[i], "forced balance");
+						if (Candidates[i].Pawn != None) {
+							if (Vehicle(Candidates[i].Pawn) != None && Vehicle(Candidates[i].Pawn).Driver != None)
+								Vehicle(Candidates[i].Pawn).Driver.Died(None, class'DamTypeTeamChange', Vehicle(Candidates[i].Pawn).Driver.Location);
+							else if (XPawn(Candidates[i].Pawn) != None)
+								Candidates[i].Pawn.Died(None, class'DamTypeTeamChange', Candidates[i].Pawn.Location);
+							else // maybe also do special handling for redeemer?
+								Candidates[i].Pawn.PlayerChangedTeam();
+						}
+						Candidates.Remove(i, 1);
 					}
-					Candidates.Remove(i, 1);
+					ForcedBalanceAttempt++;
 				}
-				ForcedBalanceAttempt++;
 			}
-		}
-		else if (SoftRebalanceCountdown >= 0) {
-			SoftRebalanceCountdown   = -1;
-			ForcedRebalanceCountdown = -1;
-			ForcedBalanceAttempt     =  0;
+			else if (SoftRebalanceCountdown >= 0) {
+				SoftRebalanceCountdown   = -1;
+				ForcedRebalanceCountdown = -1;
+				ForcedBalanceAttempt     =  0;
+			}
 		}
 	}
 	else if (SoftRebalanceCountdown >= 0) {
@@ -597,7 +598,7 @@ function bool IsValuablePlayer(Controller C)
 		return false;
 
 	// if successive attempts fail, consider more players
-	rank = ForcedBalanceAttempt;
+	rank = -ForcedBalanceAttempt;
 	for (i = 0; i < Level.GRI.PRIArray.Length; i++) {
 		if (Level.GRI.PRIArray[i].Team == C.PlayerReplicationInfo.Team) {
 			if (!bFound && !Level.GRI.PRIArray[i].bBot)

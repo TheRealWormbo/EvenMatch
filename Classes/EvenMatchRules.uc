@@ -125,7 +125,7 @@ Check team balance right before a player respawns.
 */
 function NavigationPoint FindPlayerStart(Controller Player, optional byte InTeam, optional string IncomingName)
 {
-	if (EvenMatchMutator.IsBalancingActive() && PlayerController(Player) != None && (LastRestarter != Player || LastRestartTime != Level.TimeSeconds)) {
+	if (PlayerController(Player) != None && (LastRestarter != Player || LastRestartTime != Level.TimeSeconds) && EvenMatchMutator.IsBalancingActive()) {
 		LastRestarter = PlayerController(Player);
 		LastRestartTime = Level.TimeSeconds;
 
