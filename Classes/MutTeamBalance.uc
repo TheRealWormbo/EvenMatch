@@ -144,17 +144,19 @@ function RememberForcedSwitch(PlayerController PC)
 {
 	local int i, Low, High, Middle;
 	local TRecentTeam Entry;
-	
+
+	Level.Game.BroadcastHandler.Broadcast(PC, "Forced team change by EvenMatch", 'EvenMatch');
+
 	// find entry
 	for (i = 0; i < RecentTeams.Length && RecentTeams[i].PC != PC; ++i);
-	
+
 	if (i == RecentTeams.Length)
 		return; // not found, nothing to update
-	
+
 	Entry = RecentTeams[i];
 	RecentTeams.Remove(i, 1);
 	Entry.LastForcedSwitch = Level.TimeSeconds;
-	
+
 	Low = 0;
 	High = RecentTeams.Length;
 	while (Low < High) {
@@ -310,7 +312,7 @@ function CheckBalance(PlayerController Player, bool bIsLeaving)
 	else if (SoftRebalanceCountdown >= 0) {
 		SoftRebalanceCountdown   = -1;
 		ForcedRebalanceCountdown = -1;
-		
+
 		// no rebalance needed, but check if players changed to winning team
 		if (SwitchToWinnerProgressLimit < 1.0 && !bIsLeaving) {
 			// Candidates[] contains team switchers who didn't respawn yet
@@ -406,7 +408,7 @@ function float GetTeamProgress()
 function bool IsRecentBalancer(Controller C)
 {
 	local int i;
-	
+
 	i = RecentTeams.Length / 3;
 	if (i > 0) {
 		do {} until (--i < 0 || RecentTeams[i].PC == C);
@@ -414,7 +416,7 @@ function bool IsRecentBalancer(Controller C)
 	else {
 		i--;
 	}
-	return i >= 0 && Level.TimeSeconds - RecentTeams[i].LastForcedSwitch < 60; 
+	return i >= 0 && Level.TimeSeconds - RecentTeams[i].LastForcedSwitch < 60;
 }
 
 function bool IsKeyPlayer(Controller C)
@@ -424,10 +426,10 @@ function bool IsKeyPlayer(Controller C)
 	local float Dist, BestDist;
 	local ONSPowerCore BestNode;
 	local byte TeamNum;
-	
+
 	if (C == None || C.Pawn == None || C.Pawn.Health <= 0)
 		return false;
-	
+
 	P = C.Pawn;
 	BestDist = 2000;
 	TeamNum = C.GetTeamNum();

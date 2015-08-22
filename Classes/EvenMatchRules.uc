@@ -43,9 +43,9 @@ function PreBeginPlay()
 	// remove obsolete entries
 	Now = GetTS();
 	for (i = RecentPPH.Length - 1; i >= 0; --i) {
-		Diff = (10080 + Now - RecentPPH[i].TS) % 10080;
-		if (Diff > 3000) {
-			// older than about 2 days
+		Diff = Now - RecentPPH[i].TS;
+		if (Diff > 172800) {
+			// older than 2 days
 			RecentPPH.Remove(i, 1);
 			bSaveNeeded = True;
 		}
@@ -62,7 +62,7 @@ function PreBeginPlay()
 	else {
 		Destroy();
 	}
-	
+
 	SaveRecentPPH();
 }
 
@@ -82,7 +82,7 @@ static function FillPlayInfo(PlayInfo PlayInfo)
 function SwapSides()
 {
 	local ONSPowerCore C;
-	
+
 	// This happens before ONSOnslaughtGame.PowerCores[] is set up!
 	foreach AllActors(class'ONSPowerCore', C) {
 		if (C.DefenderTeamIndex < 2) {
@@ -116,7 +116,7 @@ function NavigationPoint FindPlayerStart(Controller Player, optional byte InTeam
 	if (Mut.IsBalancingActive() && PlayerController(Player) != None && (LastRestarter != Player || LastRestartTime != Level.TimeSeconds)) {
 		LastRestarter = PlayerController(Player);
 		LastRestartTime = Level.TimeSeconds;
-		
+
 		Mut.CheckBalance(LastRestarter, False);
 	}
 	return Super.FindPlayerStart(Player, InTeam, IncomingName);
@@ -128,7 +128,18 @@ Returns the current timestamp.
 */
 function int GetTS()
 {
-	return Level.Minute + Level.Hour * 60 + Level.DayOfWeek * 1440;
+	local int mon, year;
+
+	mon = Level.Month - 2;
+	year = Level.Year;
+	if (mon <= 0) {    /* 1..12 -> 11,12,1..10 */
+		mon += 12;    /* Puts Feb last since it has leap day */
+		year -= 1;
+	}
+	return ((((year/4 - year/100 + year/400 + 367*mon/12 + Level.Day) + year*365 - 719499
+				)*24 + Level.Hour /* now have hours */
+			)*60 + Level.Minute  /* now have minutes */
+		)*60 + Level.Second; /* finally seconds */
 }
 
 
@@ -144,7 +155,7 @@ event Trigger(Actor Other, Pawn EventInstigator)
 function bool CheckScore(PlayerReplicationInfo Scorer)
 {
 	local int i;
-	
+
 	if (bBalancing || Super.CheckScore(Scorer)) {
 		SaveRecentPPH(); // store recent PPH values
 		return true;
@@ -157,11 +168,11 @@ function bool CheckScore(PlayerReplicationInfo Scorer)
 		else
 			FirstRoundResult = 2;
 		Tag = 'EndGame';
-		
+
 		log("Quick first round, shuffling teams...", Name);
 		ShuffleTeams();
 		BroadcastLocalizedMessage(class'UnevenMessage', 0,,, Level.GRI.Teams[FirstRoundResult-1]);
-		
+
 		// force round restart
 		if (Level.Game.GameStats != None) {
 			if (Mut.bDebug) log("Resetting team score stats...", Name);
@@ -173,7 +184,7 @@ function bool CheckScore(PlayerReplicationInfo Scorer)
 		if (Mut.bDebug) log("Resetting team scores...", Name);
 		Level.GRI.Teams[0].Score = 0;
 		Level.GRI.Teams[1].Score = 0;
-		
+
 		bBalancing = False;
 		SaveRecentPPH(); // store recent PPH values
 		return true;
@@ -217,7 +228,7 @@ function Timer()
 function ScoreKill(Controller Killer, Controller Killed)
 {
 	Super.ScoreKill(Killer, Killed);
-	
+
 	// update PPH for killer and killed
 	if (Killer != None && Killer.PlayerReplicationInfo != None)
 		GetPointsPerHour(Killer.PlayerReplicationInfo);
@@ -234,7 +245,7 @@ function ShuffleTeams()
 	local int i, j, OldNumBots, OldMinPlayers, iBest, jBest;
 	local float PPH, PPH2, RedPPH, BluePPH, PPHDiff, BestDiff;
 	local bool bFoundPair;
-	
+
 	OldNumBots = Game.NumBots + Game.RemainingBots;
 	OldMinPlayers = Game.MinPlayers;
 	Game.RemainingBots = 0;
@@ -273,7 +284,7 @@ function ShuffleTeams()
 		log("Will re-add " $ OldNumBots $ " bots later", Name);
 	Game.RemainingBots = OldNumBots;
 	Game.MinPlayers    = OldMinPlayers;
-	
+
 	// first balance team sizes
 	if (Mut.bDebug) log("Balancing team sizes...", Name);
 	while (RedPRIs.Length > 0 && RedPRIs.Length - BluePRIs.Length > 1) {
@@ -359,7 +370,7 @@ function float GetPointsPerHour(PlayerReplicationInfo PRI)
 	local string ID;
 	local int i;
 	local float PPH;
-	
+
 	PC = PlayerController(PRI.Owner);
 	if (PC != None) {
 		// generate an ID from IP and first part of GUID
@@ -377,15 +388,15 @@ function float GetPointsPerHour(PlayerReplicationInfo PRI)
 		// already scored, override score from earlier
 		if (i >= RecentPPH.Length)
 			RecentPPH.Length = i + 1;
-		
+
 		bSaveNeeded = bSaveNeeded || RecentPPH[i].PPH != PPH;
-		
+
 		RecentPPH[i].ID  = ID;
 		RecentPPH[i].PPH = PPH;
 		RecentPPH[i].TS  = GetTS();
 	}
 	else if (i < RecentPPH.Length) {
-		// No score yet, try finding PPH from earlier
+		// No score yet, use PPH from earlier
 		PPH = RecentPPH[i].PPH;
 	}
 	return PPH;
