@@ -26,6 +26,13 @@ var float LastRestartTime;
 var PlayerController LastRestarter, PotentiallyLeavingPlayer;
 
 
+function SaveRecentPPH()
+{
+	if (bSaveNeeded)
+		SaveConfig();
+	bSaveNeeded = False;
+}
+
 /**
 Purge outdated PPH data and randomly swap sides if configured.
 */
@@ -56,8 +63,7 @@ function PreBeginPlay()
 		Destroy();
 	}
 	
-	if (bSaveNeeded)
-		SaveConfig();
+	SaveRecentPPH();
 }
 
 
@@ -141,7 +147,7 @@ function bool CheckScore(PlayerReplicationInfo Scorer)
 	local int i;
 	
 	if (bBalancing || Super.CheckScore(Scorer)) {
-		if (bSaveNeeded) SaveConfig(); // store recent PPH values
+		SaveRecentPPH(); // store recent PPH values
 		return true;
 	}
 	if (Level.GRI.ElapsedTime < MinDesiredRoundDuration && Level.GRI.Teams[0].Score + Level.GRI.Teams[1].Score > 0) {
@@ -170,7 +176,7 @@ function bool CheckScore(PlayerReplicationInfo Scorer)
 		Level.GRI.Teams[1].Score = 0;
 		
 		bBalancing = False;
-		if (bSaveNeeded) SaveConfig(); // store recent PPH values
+		SaveRecentPPH(); // store recent PPH values
 		return true;
 	}
 	else {
@@ -179,7 +185,7 @@ function bool CheckScore(PlayerReplicationInfo Scorer)
 			if (Level.GRI.PRIArray[i] != None && !Level.GRI.PRIArray[i].bOnlySpectator)
 				GetPointsPerHour(Level.GRI.PRIArray[i]);
 		}
-		if (bSaveNeeded) SaveConfig(); // store updated PPH values
+		SaveRecentPPH(); // store updated PPH values
 	}
 	return false;
 }
@@ -357,8 +363,8 @@ function float GetPointsPerHour(PlayerReplicationInfo PRI)
 	
 	PC = PlayerController(PRI.Owner);
 	if (PC != None) {
-		// generate an ID from last part of IP and first part of GUID
-		ID = GetItemName(PC.GetPlayerNetworkAddress());
+		// generate an ID from IP and first part of GUID
+		ID = PC.GetPlayerNetworkAddress();
 		ID = Left(ID, InStr(ID, ":"));
 		ID @= Left(PC.GetPlayerIDHash(), 8);
 	}

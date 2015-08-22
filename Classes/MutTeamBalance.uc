@@ -19,6 +19,7 @@ var config bool bAnnounceTeamChange;
 var config float SmallTeamProgressThreshold;
 var config int SoftRebalanceDelay;
 var config int ForcedRebalanceDelay;
+var config float SwitchToWinnerProgressLimit;
 
 var config bool bDebug;
 
@@ -32,6 +33,7 @@ var localized string lblAnnounceTeamChange, descAnnounceTeamChange;
 var localized string lblSmallTeamProgressThreshold, descSmallTeamProgressThreshold;
 var localized string lblSoftRebalanceDelay, descSoftRebalanceDelay;
 var localized string lblForcedRebalanceDelay, descForcedRebalanceDelay;
+var localized string lblSwitchToWinnerProgressLimit, descSwitchToWinnerProgressLimit;
 
 
 var ONSOnslaughtGame Game;
@@ -41,6 +43,7 @@ var int SoftRebalanceCountdown, ForcedRebalanceCountdown;
 struct TRecentTeam {
 	var PlayerController PC;
 	var byte TeamNum;
+	var float LastForcedSwitch;
 };
 var array<TRecentTeam> RecentTeams;
 
@@ -122,14 +125,48 @@ function ModifyPlayer(Pawn Other)
 		// update cached team number for this player and potentially send team reminder
 		for (i = 0; i < RecentTeams.Length && RecentTeams[i].PC != PC; ++i);
 		if (i == RecentTeams.Length) {
+			// add new player
 			RecentTeams.Length = i + 1;
 			RecentTeams[i].PC = PC;
 			RecentTeams[i].TeamNum = 255;
 		}
-		if (bAnnounceTeamChange && RecentTeams[i].TeamNum != PC.GetTeamNum())
-			PC.ReceiveLocalizedMessage(class'TeamSwitchNotification', PC.GetTeamNum());
+		if (RecentTeams[i].TeamNum != PC.GetTeamNum()) {
+			Spawn(class'TeamChangeReplicationInfo', Other);
+			if (bAnnounceTeamChange)
+				PC.ReceiveLocalizedMessage(class'TeamSwitchNotification', PC.GetTeamNum());
+		}
 		RecentTeams[i].TeamNum = PC.GetTeamNum();
 	}
+}
+
+
+function RememberForcedSwitch(PlayerController PC)
+{
+	local int i, Low, High, Middle;
+	local TRecentTeam Entry;
+	
+	// find entry
+	for (i = 0; i < RecentTeams.Length && RecentTeams[i].PC != PC; ++i);
+	
+	if (i == RecentTeams.Length)
+		return; // not found, nothing to update
+	
+	Entry = RecentTeams[i];
+	RecentTeams.Remove(i, 1);
+	Entry.LastForcedSwitch = Level.TimeSeconds;
+	
+	Low = 0;
+	High = RecentTeams.Length;
+	while (Low < High) {
+		Middle = (High + Low) / 2; // the engine would crash long before this overflows
+		if (RecentTeams[Middle].LastForcedSwitch > Entry.LastForcedSwitch)
+			Low = Middle + 1;
+		else
+			High = Middle;
+	}
+	// found insert location
+	RecentTeams.Insert(Low, 1);
+	RecentTeams[Low] = Entry;
 }
 
 
@@ -177,10 +214,13 @@ function CheckBalance(PlayerController Player, bool bIsLeaving)
 	local float Progress;
 
 	if (Player != None && bIsLeaving) {
-		if (Player.GetTeamNum() == 0)
+		switch (Player.GetTeamNum()) {
+		case 0:
 			SizeOffset = -1;
-		else if (Player.GetTeamNum() == 0)
+			break;
+		case 1:
 			SizeOffset = +1;
+		}
 	}
 
 	// check if player changed team
@@ -218,8 +258,9 @@ function CheckBalance(PlayerController Player, bool bIsLeaving)
 				do {
 					// try switching a random team changer to the smaller team
 					i = Rand(Candidates.Length);
-					if ((!bIsLeaving || Candidates[i] != Player) && Candidates[i].GetTeamNum() == BiggerTeam) {
+					if ((!bIsLeaving || Candidates[i] != Player) && Candidates[i].GetTeamNum() == BiggerTeam && !IsRecentBalancer(Candidates[i])) {
 						Game.ChangeTeam(Candidates[i], 1 - BiggerTeam, true);
+						RememberForcedSwitch(Candidates[i]);
 					}
 					Candidates.Remove(i, 1);
 				} until (Candidates.Length == 0 || !RebalanceStillNeeded(SizeOffset, Progress, BiggerTeam));
@@ -227,13 +268,14 @@ function CheckBalance(PlayerController Player, bool bIsLeaving)
 			if (Candidates.Length == 0 && RebalanceStillNeeded(SizeOffset, Progress, BiggerTeam)) {
 				// try to find other candidates currently waiting to respawn
 				for (C = Level.ControllerList; C != None; C = C.NextController) {
-					if ((!bIsLeaving || C != Player) && PlayerController(C) != None && C.Pawn == None && C.GetTeamNum() == BiggerTeam)
+					if ((!bIsLeaving || C != Player) && PlayerController(C) != None && C.Pawn == None && C.GetTeamNum() == BiggerTeam && !IsRecentBalancer(Candidates[i]))
 						Candidates[Candidates.Length] = PlayerController(C);
 				}
 				while (Candidates.Length > 0 && RebalanceStillNeeded(SizeOffset, Progress, BiggerTeam)) {
 					// try switching a random candidate to the smaller team
 					i = Rand(Candidates.Length);
 					Game.ChangeTeam(Candidates[i], 1 - BiggerTeam, true);
+					RememberForcedSwitch(Candidates[i]);
 					Candidates.Remove(i, 1);
 				}
 			}
@@ -255,6 +297,7 @@ function CheckBalance(PlayerController Player, bool bIsLeaving)
 					// try switching a random candidate to the smaller team
 					i = Rand(Candidates.Length);
 					Game.ChangeTeam(Candidates[i], 1 - BiggerTeam, true);
+					RememberForcedSwitch(Candidates[i]);
 					Candidates.Remove(i, 1);
 				}
 			}
@@ -267,21 +310,33 @@ function CheckBalance(PlayerController Player, bool bIsLeaving)
 	else if (SoftRebalanceCountdown >= 0) {
 		SoftRebalanceCountdown   = -1;
 		ForcedRebalanceCountdown = -1;
+		
+		// no rebalance needed, but check if players changed to winning team
+		if (SwitchToWinnerProgressLimit < 1.0 && !bIsLeaving) {
+			// Candidates[] contains team switchers who didn't respawn yet
+			while (Candidates.Length > 0) {
+				i = Rand(Candidates.Length);
+				SizeOffset = 4 * Candidates[i].GetTeamNum() - 2; // red -2, blue +2
+				if (Abs(Candidates[i].GetTeamNum() - Progress) > SwitchToWinnerProgressLimit && !RebalanceStillNeeded(SizeOffset, Progress, BiggerTeam)) {
+					// try switching the team changer back to his previous team
+					Game.ChangeTeam(Candidates[i], 1 - Candidates[i].GetTeamNum(), true);
+					RememberForcedSwitch(Candidates[i]);
+				}
+				Candidates.Remove(i, 1);
+			}
+		}
 	}
 }
 
 
 function bool RebalanceNeeded(optional int SizeOffset, optional out float Progress, optional out byte BiggerTeam)
 {
-	if (!IsBalancingActive())
-		return false;
-
 	Progress = GetTeamProgress();
-	return RebalanceStillNeeded(SizeOffset, Progress, BiggerTeam);
+	return RebalanceStillNeeded(SizeOffset, Progress, BiggerTeam) && IsBalancingActive();
 }
 
 
-function bool RebalanceStillNeeded(int SizeOffset, float Progress, out byte BiggerTeam)
+function bool RebalanceStillNeeded(int SizeOffset, float Progress, optional out byte BiggerTeam)
 {
 	local int SizeDiff;
 
@@ -348,6 +403,17 @@ function float GetTeamProgress()
 }
 
 
+function bool IsRecentBalancer(Controller C)
+{
+	local int i;
+	
+	i = RecentTeams.Length / 3;
+	if (i > 0) {
+		do {} until (--i < 0 || RecentTeams[i].PC == C);
+	}
+	return i >= 0 && Level.TimeSeconds - RecentTeams[i].LastForcedSwitch < 60; 
+}
+
 function bool IsKeyPlayer(Controller C)
 {
 	local Pawn P;
@@ -355,10 +421,10 @@ function bool IsKeyPlayer(Controller C)
 	local float Dist, BestDist;
 	local ONSPowerCore BestNode;
 	local byte TeamNum;
-
+	
 	if (C == None || C.Pawn == None || C.Pawn.Health <= 0)
 		return false;
-
+	
 	P = C.Pawn;
 	BestDist = 2000;
 	TeamNum = C.GetTeamNum();
@@ -404,6 +470,7 @@ static function FillPlayInfo(PlayInfo PlayInfo)
 	PlayInfo.AddSetting(default.FriendlyName, "SmallTeamProgressThreshold", default.lblSmallTeamProgressThreshold, 0, 0, "Text", "4;0.0:1.0");
 	PlayInfo.AddSetting(default.FriendlyName, "SoftRebalanceDelay", default.lblSoftRebalanceDelay, 0, 0, "Text", "3;0:999");
 	PlayInfo.AddSetting(default.FriendlyName, "ForcedRebalanceDelay", default.lblForcedRebalanceDelay, 0, 0, "Text", "3;0:999");
+	PlayInfo.AddSetting(default.FriendlyName, "SwitchToWinnerProgressLimit", default.lblSwitchToWinnerProgressLimit, 0, 0, "Text", "4;0.0:1.0");
 
 	PlayInfo.PopClass();
 }
@@ -447,6 +514,8 @@ static event string GetDescriptionText(string PropName)
 		return default.descSoftRebalanceDelay;
 	case "ForcedRebalanceDelay":
 		return default.descForcedRebalanceDelay;
+	case "SwitchToWinnerProgressLimit":
+		return default.descSwitchToWinnerProgressLimit;
 	default:
 		return Super.GetDescriptionText(PropName);
 	}
@@ -468,6 +537,7 @@ defaultproperties
      SmallTeamProgressThreshold=0.500000
      SoftRebalanceDelay=10
      ForcedRebalanceDelay=30
+     SwitchToWinnerProgressLimit=0.700000
      lblActivationDelay="Activation delay"
      descActivationDelay="Team balance checks only start after this number of seconds elapsed in the match."
      lblMinDesiredRoundDuration="Minimum desired round length (minutes)"
@@ -488,6 +558,8 @@ defaultproperties
      descSoftRebalanceDelay="If teams stay unbalanced longer than this this, respawning players are switched to achieve rebalance."
      lblForcedRebalanceDelay="Forced rebalance delay"
      descForcedRebalanceDelay="If teams stay unbalanced longer than this this, alive players are switched to achieve rebalance."
+     lblSwitchToWinnerProgressLimit="Switch to winner progress limit"
+     descSwitchToWinnerProgressLimit="Only allow players to switch teams if their new team has less than this share of the total match progress. (1.0: no limit)"
      FriendlyName="Team Balance (Onslaught-only)"
      Description="Special team balancing rules for public Onslaught matches."
 }
