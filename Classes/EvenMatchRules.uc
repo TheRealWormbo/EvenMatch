@@ -82,6 +82,8 @@ static function FillPlayInfo(PlayInfo PlayInfo)
 function SwapSides()
 {
 	local ONSPowerCore C;
+	
+	log("Using swapped sides...", 'EvenMatch');
 
 	// This happens before ONSOnslaughtGame.PowerCores[] is set up!
 	foreach AllActors(class'ONSPowerCore', C) {
@@ -101,7 +103,7 @@ Shuffle teams at match start, if configured.
 function MatchStarting()
 {
 	if (class'MutTeamBalance'.default.bShuffleTeamsFromPreviousMatch) {
-		log("Shuffling teams from previous match...", Name);
+		log("Shuffling teams from previous match...", 'EvenMatch');
 		ShuffleTeams();
 		BroadcastLocalizedMessage(class'UnevenMessage', -1);
 	}
@@ -169,19 +171,19 @@ function bool CheckScore(PlayerReplicationInfo Scorer)
 			FirstRoundResult = 2;
 		Tag = 'EndGame';
 
-		log("Quick first round, shuffling teams...", Name);
+		log("Quick first round, shuffling teams...", 'EvenMatch');
 		ShuffleTeams();
 		BroadcastLocalizedMessage(class'UnevenMessage', 0,,, Level.GRI.Teams[FirstRoundResult-1]);
 
 		// force round restart
 		if (Level.Game.GameStats != None) {
-			if (Mut.bDebug) log("Resetting team score stats...", Name);
+			if (Mut.bDebug) log("Resetting team score stats...", 'EvenMatchDebug');
 			if (Level.GRI.Teams[0].Score > 0)
 				Level.Game.GameStats.TeamScoreEvent(0, -Level.GRI.Teams[0].Score, "reset");
 			if (Level.GRI.Teams[1].Score > 0)
 				Level.Game.GameStats.TeamScoreEvent(1, -Level.GRI.Teams[1].Score, "reset");
 		}
-		if (Mut.bDebug) log("Resetting team scores...", Name);
+		if (Mut.bDebug) log("Resetting team scores...", 'EvenMatchDebug');
 		Level.GRI.Teams[0].Score = 0;
 		Level.GRI.Teams[1].Score = 0;
 
@@ -216,9 +218,9 @@ function Timer()
 	if (PotentiallyLeavingPlayer == None || PotentiallyLeavingPlayer.PlayerReplicationInfo != None && PotentiallyLeavingPlayer.PlayerReplicationInfo.bOnlySpectator) {
 		if (Mut.bDebug) {
 			if (PotentiallyLeavingPlayer == None)
-				log("DEBUG: a player disconnected", name);
+				log("DEBUG: a player disconnected", 'EvenMatchDebug');
 			else
-				log("DEBUG: " $ PotentiallyLeavingPlayer.GetHumanReadableName() $ " became spectator", name);
+				log("DEBUG: " $ PotentiallyLeavingPlayer.GetHumanReadableName() $ " became spectator", 'EvenMatchDebug');
 		}
 		Mut.CheckBalance(PotentiallyLeavingPlayer, True);
 	}
@@ -251,7 +253,7 @@ function ShuffleTeams()
 	Game.RemainingBots = 0;
 	Game.MinPlayers    = 0;
 	if (Game.NumBots > 0) {
-		if (Mut.bDebug) log("Removing " $ Game.NumBots $ " bots for shuffling", Name);
+		if (Mut.bDebug) log("Removing " $ Game.NumBots $ " bots for shuffling", 'EvenMatchDebug');
 		Game.KillBots(Game.NumBots);
 	}
 	// find PRIs of active players
@@ -260,14 +262,14 @@ function ShuffleTeams()
 		if (!PRI.bOnlySpectator && PlayerController(PRI.Owner) != None && PlayerController(PRI.Owner).bIsPlayer) {
 			PPH = GetPointsPerHour(PRI);
 			if (PRI.Team.TeamIndex == 0) {
-				if (Mut.bDebug) log(PRI.PlayerName $ " is currently on red, " $ PPH $ " PPH", Name);
+				if (Mut.bDebug) log(PRI.PlayerName $ " is currently on red, " $ PPH $ " PPH", 'EvenMatchDebug');
 				for (j = 0; j < RedPRIs.Length && GetPointsPerHour(RedPRIs[j]) > PPH; ++j);
 				RedPRIs.Insert(j, 1);
 				RedPRIs[j] = PRI;
 				RedPPH += PPH;
 			}
 			else if (PRI.Team.TeamIndex == 1) {
-				if (Mut.bDebug) log(PRI.PlayerName $ " is currently on blue, " $ PPH $ " PPH", Name);
+				if (Mut.bDebug) log(PRI.PlayerName $ " is currently on blue, " $ PPH $ " PPH", 'EvenMatchDebug');
 				for (j = 0; j < BluePRIs.Length && GetPointsPerHour(BluePRIs[j]) > PPH; ++j);
 				BluePRIs.Insert(j, 1);
 				BluePRIs[j] = PRI;
@@ -276,17 +278,17 @@ function ShuffleTeams()
 		}
 	}
 	if (Mut.bDebug) {
-		log("Red team size " $ RedPRIs.Length $ ", combined PPH " $ RedPPH, Name);
-		log("Blue team size " $ BluePRIs.Length $ ", combined PPH " $ BluePPH, Name);
+		log("Red team size " $ RedPRIs.Length $ ", combined PPH " $ RedPPH, 'EvenMatchDebug');
+		log("Blue team size " $ BluePRIs.Length $ ", combined PPH " $ BluePPH, 'EvenMatchDebug');
 	}
 	// let the game re-add missing bots
 	if (Mut.bDebug && OldNumBots > 0)
-		log("Will re-add " $ OldNumBots $ " bots later", Name);
+		log("Will re-add " $ OldNumBots $ " bots later", 'EvenMatchDebug');
 	Game.RemainingBots = OldNumBots;
 	Game.MinPlayers    = OldMinPlayers;
 
 	// first balance team sizes
-	if (Mut.bDebug) log("Balancing team sizes...", Name);
+	if (Mut.bDebug) log("Balancing team sizes...", 'EvenMatchDebug');
 	while (RedPRIs.Length > 0 && RedPRIs.Length - BluePRIs.Length > 1) {
 		// move a random red player to the blue team
 		i = Rand(RedPRIs.Length);
@@ -297,7 +299,7 @@ function ShuffleTeams()
 		BluePPH += PPH;
 		RedPRIs.Remove(i, 1);
 		RedPPH -= PPH;
-		if (Mut.bDebug) log("-" @ BluePRIs[j].PlayerName $ " will move to blue (" $ PPH $ " PPH)", Name);
+		if (Mut.bDebug) log("-" @ BluePRIs[j].PlayerName $ " will move to blue (" $ PPH $ " PPH)", 'EvenMatchDebug');
 	}
 	while (BluePRIs.Length > 0 && BluePRIs.Length - RedPRIs.Length > 1) {
 		// move a random blue player to the red team
@@ -309,14 +311,14 @@ function ShuffleTeams()
 		RedPPH += PPH;
 		BluePRIs.Remove(i, 1);
 		BluePPH -= PPH;
-		if (Mut.bDebug) log("-" @ RedPRIs[j].PlayerName $ " will move to red (" $ PPH $ " PPH)", Name);
+		if (Mut.bDebug) log("-" @ RedPRIs[j].PlayerName $ " will move to red (" $ PPH $ " PPH)", 'EvenMatchDebug');
 	}
 	if (Mut.bDebug) {
-		log("Red team size " $ RedPRIs.Length $ ", combined PPH " $ RedPPH, Name);
-		log("Blue team size " $ BluePRIs.Length $ ", combined PPH " $ BluePPH, Name);
+		log("Red team size " $ RedPRIs.Length $ ", combined PPH " $ RedPPH, 'EvenMatchDebug');
+		log("Blue team size " $ BluePRIs.Length $ ", combined PPH " $ BluePPH, 'EvenMatchDebug');
 	}
 	// now balance team skill
-	if (Mut.bDebug) log("Balancing team PPH...", Name);
+	if (Mut.bDebug) log("Balancing team PPH...", 'EvenMatchDebug');
 	do {
 		PPHDiff = RedPPH - BluePPH;
 		bFoundPair = False;
@@ -334,7 +336,7 @@ function ShuffleTeams()
 			}
 		}
 		if (bFoundPair) {
-			if (Mut.bDebug) log("Swapping " $ RedPRIs[iBest].PlayerName $ " (red) and " $ BluePRIs[jBest].PlayerName $ " (blue), PPH diff. " $ BestDiff, Name);
+			if (Mut.bDebug) log("Swapping " $ RedPRIs[iBest].PlayerName $ " (red) and " $ BluePRIs[jBest].PlayerName $ " (blue), PPH diff. " $ BestDiff, 'EvenMatchDebug');
 			PRI = RedPRIs[iBest];
 			RedPRIs[iBest] = BluePRIs[jBest];
 			BluePRIs[jBest] = PRI;
@@ -343,24 +345,24 @@ function ShuffleTeams()
 		}
 	} until (!bFoundPair);
 	if (Mut.bDebug) {
-		log("Red team size " $ RedPRIs.Length $ ", combined PPH " $ RedPPH, Name);
-		log("Blue team size " $ BluePRIs.Length $ ", combined PPH " $ BluePPH, Name);
+		log("Red team size " $ RedPRIs.Length $ ", combined PPH " $ RedPPH, 'EvenMatchDebug');
+		log("Blue team size " $ BluePRIs.Length $ ", combined PPH " $ BluePPH, 'EvenMatchDebug');
 	}
 	// apply team changes
-	if (Mut.bDebug) log("Applying team changes...", Name);
+	if (Mut.bDebug) log("Applying team changes...", 'EvenMatchDebug');
 	for (i = 0; i < RedPRIs.Length; ++i) {
 		if (RedPRIs[i].Team.TeamIndex != 0) {
-			if (Mut.bDebug) log("Moving " $ RedPRIs[i].PlayerName $ " to red", Name);
+			if (Mut.bDebug) log("Moving " $ RedPRIs[i].PlayerName $ " to red", 'EvenMatchDebug');
 			ChangeTeam(PlayerController(RedPRIs[i].Owner), 0);
 		}
 	}
 	for (i = 0; i < BluePRIs.Length; ++i) {
 		if (BluePRIs[i].Team.TeamIndex != 1) {
-			if (Mut.bDebug) log("Moving " $ BluePRIs[i].PlayerName $ " to blue", Name);
+			if (Mut.bDebug) log("Moving " $ BluePRIs[i].PlayerName $ " to blue", 'EvenMatchDebug');
 			ChangeTeam(PlayerController(BluePRIs[i].Owner), 1);
 		}
 	}
-	if (Mut.bDebug) log("Teams shuffled.", Name);
+	if (Mut.bDebug) log("Teams shuffled.", 'EvenMatchDebug');
 }
 
 

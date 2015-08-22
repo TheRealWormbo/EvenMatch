@@ -74,7 +74,7 @@ defaultproperties
      PrevMatchBalanceString="Teams have been balanced based on last match results"
      FirstRoundWinnerString="%t won the first round"
      TeamsUnbalancedString="Teams are uneven, balance will be forced in %n seconds"
-     SoftBalanceString="Teams are uneven, respawning players will switch to balance"
+     SoftBalanceString="Teams are uneven, respawning players may switch to balance"
      ForcedBalanceString="Teams are uneven, balance will be forced now"
      QuickRoundAnnouncement(0)="red_team_dominating"
      QuickRoundAnnouncement(1)="blue_team_dominating"

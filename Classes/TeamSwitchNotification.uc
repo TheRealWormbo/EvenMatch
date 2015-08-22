@@ -36,7 +36,7 @@ static function ClientReceive(PlayerController P, optional int MessageSwitch, op
 	Super.ClientReceive(P, MessageSwitch, RelatedPRI_1, RelatedPRI_2, OptionalObject);
 
 	if (UnrealPlayer(P) != None)
-		UnrealPlayer(P).ClientDelayedAnnouncement(default.TeamChangeAnnouncement[MessageSwitch], 5);
+		UnrealPlayer(P).ClientDelayedAnnouncement(default.TeamChangeAnnouncement[MessageSwitch], 5 + 10 * int(OptionalObject != None));
 }
 
 static function string GetString(optional int MessageSwitch, optional PlayerReplicationInfo RelatedPRI_1, optional PlayerReplicationInfo RelatedPRI_2, optional Object OptionalObject)
