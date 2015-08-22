@@ -20,6 +20,7 @@ var config float SmallTeamProgressThreshold;
 var config int SoftRebalanceDelay;
 var config int ForcedRebalanceDelay;
 var config float SwitchToWinnerProgressLimit;
+var config byte ValuablePlayerRankingPct;
 
 var config bool bDebug;
 
@@ -34,6 +35,7 @@ var localized string lblSmallTeamProgressThreshold, descSmallTeamProgressThresho
 var localized string lblSoftRebalanceDelay, descSoftRebalanceDelay;
 var localized string lblForcedRebalanceDelay, descForcedRebalanceDelay;
 var localized string lblSwitchToWinnerProgressLimit, descSwitchToWinnerProgressLimit;
+var localized string lblValuablePlayerRankingPct, descValuablePlayerRankingPct;
 
 
 var ONSOnslaughtGame Game;
@@ -46,6 +48,9 @@ struct TRecentTeam {
 	var float LastForcedSwitch;
 };
 var array<TRecentTeam> RecentTeams;
+
+
+var Scoreboard PlayerSorter;
 
 
 function PostBeginPlay()
@@ -203,6 +208,37 @@ function Timer()
 }
 
 
+function SortPRIArray()
+{
+	local PlayerController PC;
+	local class<Scoreboard> ScoreboardClass;
+
+	if (PlayerSorter == None) {
+		// if dedicated server, spawn a scoreboard that will sort players, otherwise use the existing scoreboard
+		PC = Level.GetLocalPlayerController();
+		if (PC != None && PC.MyHud != None && PC.MyHud.Scoreboard != None) {
+			PlayerSorter = PC.MyHud.Scoreboard;
+		}
+		else {
+			// find a plaer controller, any with a GRI reference will do
+			foreach AllActors(class'PlayerController', PC) {
+				if (PC.GameReplicationInfo != None)
+					break;
+			}
+			ScoreboardClass = class<Scoreboard>(DynamicLoadObject(Level.Game.ScoreBoardType, class'Class'));
+			if (ScoreboardClass != None)
+				PlayerSorter = Spawn(ScoreboardClass, PC);
+
+			if (PlayerSorter != None && PlayerSorter.GRI == None)
+				PlayerSorter.GRI = Level.GRI;
+		}
+	}
+
+	if (PlayerSorter != None)
+		PlayerSorter.SortPRIArray();
+}
+
+
 /**
 Check team balance and potentially move
 */
@@ -214,6 +250,8 @@ function CheckBalance(PlayerController Player, bool bIsLeaving)
 	local array<PlayerController> Candidates;
 	local Controller C;
 	local float Progress;
+
+	SortPRIArray();
 
 	if (Player != None && bIsLeaving) {
 		switch (Player.GetTeamNum()) {
@@ -276,8 +314,10 @@ function CheckBalance(PlayerController Player, bool bIsLeaving)
 				while (Candidates.Length > 0 && RebalanceStillNeeded(SizeOffset, Progress, BiggerTeam)) {
 					// try switching a random candidate to the smaller team
 					i = Rand(Candidates.Length);
-					Game.ChangeTeam(Candidates[i], 1 - BiggerTeam, true);
-					RememberForcedSwitch(Candidates[i]);
+					if (!IsValuablePlayer(Candidates[i])) {
+						Game.ChangeTeam(Candidates[i], 1 - BiggerTeam, true);
+						RememberForcedSwitch(Candidates[i]);
+					}
 					Candidates.Remove(i, 1);
 				}
 			}
@@ -331,6 +371,25 @@ function CheckBalance(PlayerController Player, bool bIsLeaving)
 }
 
 
+function bool IsValuablePlayer(Controller C)
+{
+	local int i;
+	local int rank;
+
+	if (C.PlayerReplicationInfo == None)
+		return false;
+
+	for (i = 0; i < Level.GRI.PRIArray.Length; i++) {
+		if (Level.GRI.PRIArray[i].Team == C.PlayerReplicationInfo.Team)
+			rank++;
+
+		if (Level.GRI.PRIArray[i] == C.PlayerReplicationInfo)
+			break;
+	}
+	return 100 * rank / C.PlayerReplicationInfo.Team.Size >= ValuablePlayerRankingPct;
+}
+
+
 function bool RebalanceNeeded(optional int SizeOffset, optional out float Progress, optional out byte BiggerTeam)
 {
 	Progress = GetTeamProgress();
@@ -350,7 +409,7 @@ function bool RebalanceStillNeeded(int SizeOffset, float Progress, optional out 
 	}
 	BiggerTeam = byte(SizeDiff < 0); // 0 if red is larger, 1 if blue is larger
 
-	return Abs(BiggerTeam - Progress) < SmallTeamProgressThreshold;
+	return Abs(BiggerTeam - Progress) < SmallTeamProgressThreshold ** Sqrt(1 / Abs(SizeDiff));
 }
 
 
@@ -430,10 +489,19 @@ function bool IsKeyPlayer(Controller C)
 	if (C == None || C.Pawn == None || C.Pawn.Health <= 0)
 		return false;
 
+	if (Vehicle(C.Pawn) != None && Vehicle(C.Pawn).ImportantVehicle())
+		return true; // driving a tank or other large vehicle
+
 	P = C.Pawn;
 	BestDist = 2000;
 	TeamNum = C.GetTeamNum();
 	for (i = 0; i < Game.PowerCores.Length; ++i) {
+		if (Level.TimeSeconds - Game.PowerCores[i].LastAttackTime < 1.0 && Game.PowerCores[i].LastAttacker == C.Pawn)
+			return true; // player is currently attacking this node/core
+
+		if (Level.TimeSeconds - Game.PowerCores[i].HealingTime < 0.5 && Game.PowerCores[i].LastHealedBy == C)
+			return true; // player currently heals a node
+
 		Dist = VSize(P.Location - Game.PowerCores[i].Location);
 		if (Dist < BestDist && IsNodeRelevantTo(TeamNum, Game.PowerCores[i])) {
 			BestDist = Dist;
@@ -476,6 +544,7 @@ static function FillPlayInfo(PlayInfo PlayInfo)
 	PlayInfo.AddSetting(default.FriendlyName, "SoftRebalanceDelay", default.lblSoftRebalanceDelay, 0, 0, "Text", "3;0:999");
 	PlayInfo.AddSetting(default.FriendlyName, "ForcedRebalanceDelay", default.lblForcedRebalanceDelay, 0, 0, "Text", "3;0:999");
 	PlayInfo.AddSetting(default.FriendlyName, "SwitchToWinnerProgressLimit", default.lblSwitchToWinnerProgressLimit, 0, 0, "Text", "4;0.0:1.0");
+	PlayInfo.AddSetting(default.FriendlyName, "ValuablePlayerRankingPct", default.lblValuablePlayerRankingPct, 0, 0, "Text", "2;0:90");
 
 	PlayInfo.PopClass();
 }
@@ -521,6 +590,8 @@ static event string GetDescriptionText(string PropName)
 		return default.descForcedRebalanceDelay;
 	case "SwitchToWinnerProgressLimit":
 		return default.descSwitchToWinnerProgressLimit;
+	case "ValuablePlayerRankingPct":
+		return default.descValuablePlayerRankingPct;
 	default:
 		return Super.GetDescriptionText(PropName);
 	}
@@ -543,6 +614,7 @@ defaultproperties
      SoftRebalanceDelay=10
      ForcedRebalanceDelay=30
      SwitchToWinnerProgressLimit=0.700000
+     ValuablePlayerRankingPct=75
      lblActivationDelay="Activation delay"
      descActivationDelay="Team balance checks only start after this number of seconds elapsed in the match."
      lblMinDesiredRoundDuration="Minimum desired round length (minutes)"
@@ -565,6 +637,8 @@ defaultproperties
      descForcedRebalanceDelay="If teams stay unbalanced longer than this this, alive players are switched to achieve rebalance."
      lblSwitchToWinnerProgressLimit="Switch to winner progress limit"
      descSwitchToWinnerProgressLimit="Only allow players to switch teams if their new team has less than this share of the total match progress. (1.0: no limit)"
+     lblValuablePlayerRankingPct="Valuable player ranking %"
+     descValuablePlayerRankingPct="If a player ranks among this top percentage of the team, he is considered too valuable to be switched during soft rebalancing."
      FriendlyName="Team Balance (Onslaught-only)"
      Description="Special team balancing rules for public Onslaught matches."
 }

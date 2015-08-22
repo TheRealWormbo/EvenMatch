@@ -72,7 +72,7 @@ defaultproperties
 {
      QuickRoundBalanceString="Quick round, restarting with balanced teams"
      PrevMatchBalanceString="Teams have been balanced based on last match results"
-     FirstRoundWinnerString="%t won the previous round"
+     FirstRoundWinnerString="%t won the first round"
      TeamsUnbalancedString="Teams are uneven, balance will be forced in %n seconds"
      SoftBalanceString="Teams are uneven, respawning players will switch to balance"
      ForcedBalanceString="Teams are uneven, balance will be forced now"
