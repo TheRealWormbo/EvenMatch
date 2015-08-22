@@ -31,6 +31,7 @@ var localized string ForcedBalanceString;
 var localized string CallForBalanceString;
 var localized string NoCallForBalanceNowString;
 var localized string NoCallForBalanceEvenString;
+var localized string YouWereSwitchedString;
 
 
 //=============================================================================
@@ -57,6 +58,8 @@ static function ClientReceive(PlayerController P, optional int MessageSwitch, op
 static function string GetString(optional int MessageSwitch, optional PlayerReplicationInfo RelatedPRI_1, optional PlayerReplicationInfo RelatedPRI_2, optional Object OptionalObject)
 {
 	switch (MessageSwitch) {
+	case -5:
+		return default.YouWereSwitchedString;
 	case -4:
 		return default.NoCallForBalanceEvenString;
 	case -3:
@@ -97,6 +100,7 @@ defaultproperties
 	CallForBalanceString    = "%p called for a team balance check"
 	NoCallForBalanceNowString  = "You can't request a team balance check at this time."
 	NoCallForBalanceEvenString = "Teams look even already, no apparent need for balancing."
+	YouWereSwitchedString   = "Forced team change by EvenMatch"
 
 	QuickRoundAnnouncement(0) = red_team_dominating
 	QuickRoundAnnouncement(1) = blue_team_dominating

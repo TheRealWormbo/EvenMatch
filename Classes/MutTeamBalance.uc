@@ -330,7 +330,7 @@ function RememberForcedSwitch(PlayerController PC, string Reason)
 	local TRecentTeam Entry;
 
 	log("Forced team change: " $ PC.GetHumanReadableName() @ PC.GetTeamNum() @ Reason, 'EvenMatch');
-	Level.Game.BroadcastHandler.Broadcast(PC, "Forced team change by EvenMatch", 'EvenMatch');
+	PC.ReceiveLocalizedMessage(class'UnevenMessage', -5);
 
 	// find entry
 	for (i = 0; i < RecentTeams.Length && RecentTeams[i].PC != PC; ++i);
