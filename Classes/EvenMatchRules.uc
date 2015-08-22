@@ -1,12 +1,22 @@
-/******************************************************************************
-EvenMatchRules
+/**
+Implements team shuffling on match start and after a quick first round and
+various GameRules-only hooks to trigger mid-round balancing.
 
-Creation date: 2009-07-19 10:58
-Last change: $Id$
-Copyright (c) 2009, Wormbo
-******************************************************************************/
+Copyright (c) 2009-2015, Wormbo
 
-class EvenMatchRules extends GameRules config;
+(1) This source code and any binaries compiled from it are provided "as-is",
+without warranty of any kind. (In other words, if it breaks something for you,
+that's entirely your problem, not mine.)
+(2) You are allowed to reuse parts of this source code and binaries compiled
+from it in any way that does not involve making money, breaking applicable laws
+or restricting anyone's human or civil rights.
+(3) You are allowed to distribute binaries compiled from modified versions of
+this source code only if you make the modified sources available as well. I'd
+prefer being mentioned in the credits for such binaries, but please do not make
+it seem like I endorse them in any way.
+*/
+
+class EvenMatchRules extends GameRules config(EvenMatchPPH) parseconfig;
 
 
 struct TPlayerPPH {
@@ -17,8 +27,8 @@ struct TPlayerPPH {
 var config array<TPlayerPPH> RecentPPH;
 
 var ONSOnslaughtGame Game;
-var MutTeamBalance Mut;
-var int MinDesiredRoundDuration;
+var MutTeamBalance EvenMatchMutator;
+var int MinDesiredFirstRoundDuration;
 var bool bBalancing, bSaveNeeded;
 var int FirstRoundResult;
 
@@ -54,7 +64,7 @@ function PreBeginPlay()
 	Game = ONSOnslaughtGame(Level.Game);
 	if (Game != None) {
 		AddToPackageMap();
-		MinDesiredRoundDuration = class'MutTeamBalance'.default.MinDesiredRoundDuration * 60;
+		MinDesiredFirstRoundDuration = class'MutTeamBalance'.default.MinDesiredFirstRoundDuration * 60;
 		Game.AddGameModifier(Self);
 		if (class'MutTeamBalance'.default.bRandomlyStartWithSidesSwapped && Rand(2) == 0)
 			SwapSides();
@@ -102,8 +112,8 @@ Shuffle teams at match start, if configured.
 */
 function MatchStarting()
 {
-	if (class'MutTeamBalance'.default.bShuffleTeamsFromPreviousMatch) {
-		log("Shuffling teams from previous match...", 'EvenMatch');
+	if (class'MutTeamBalance'.default.bShuffleTeamsAtMatchStart) {
+		log("Shuffling teams based on previous known PPH...", 'EvenMatch');
 		ShuffleTeams();
 		BroadcastLocalizedMessage(class'UnevenMessage', -1);
 	}
@@ -115,11 +125,11 @@ Check team balance right before a player respawns.
 */
 function NavigationPoint FindPlayerStart(Controller Player, optional byte InTeam, optional string IncomingName)
 {
-	if (Mut.IsBalancingActive() && PlayerController(Player) != None && (LastRestarter != Player || LastRestartTime != Level.TimeSeconds)) {
+	if (EvenMatchMutator.IsBalancingActive() && PlayerController(Player) != None && (LastRestarter != Player || LastRestartTime != Level.TimeSeconds)) {
 		LastRestarter = PlayerController(Player);
 		LastRestartTime = Level.TimeSeconds;
 
-		Mut.CheckBalance(LastRestarter, False);
+		EvenMatchMutator.CheckBalance(LastRestarter, False);
 	}
 	return Super.FindPlayerStart(Player, InTeam, IncomingName);
 }
@@ -162,8 +172,8 @@ function bool CheckScore(PlayerReplicationInfo Scorer)
 		SaveRecentPPH(); // store recent PPH values
 		return true;
 	}
-	if (Level.GRI.ElapsedTime < MinDesiredRoundDuration && Level.GRI.Teams[0].Score + Level.GRI.Teams[1].Score > 0) {
-		MinDesiredRoundDuration = 0; // one restart is enough
+	if (Level.GRI.ElapsedTime < MinDesiredFirstRoundDuration && Level.GRI.Teams[0].Score + Level.GRI.Teams[1].Score > 0) {
+		MinDesiredFirstRoundDuration = 0; // one restart is enough
 		bBalancing = True;
 		if (Level.GRI.Teams[0].Score > 0)
 			FirstRoundResult = 1;
@@ -177,13 +187,13 @@ function bool CheckScore(PlayerReplicationInfo Scorer)
 
 		// force round restart
 		if (Level.Game.GameStats != None) {
-			if (Mut.bDebug) log("Resetting team score stats...", 'EvenMatchDebug');
+			if (EvenMatchMutator.bDebug) log("Resetting team score stats...", 'EvenMatchDebug');
 			if (Level.GRI.Teams[0].Score > 0)
 				Level.Game.GameStats.TeamScoreEvent(0, -Level.GRI.Teams[0].Score, "reset");
 			if (Level.GRI.Teams[1].Score > 0)
 				Level.Game.GameStats.TeamScoreEvent(1, -Level.GRI.Teams[1].Score, "reset");
 		}
-		if (Mut.bDebug) log("Resetting team scores...", 'EvenMatchDebug');
+		if (EvenMatchMutator.bDebug) log("Resetting team scores...", 'EvenMatchDebug');
 		Level.GRI.Teams[0].Score = 0;
 		Level.GRI.Teams[1].Score = 0;
 
@@ -216,13 +226,13 @@ function bool PreventDeath(Pawn Killed, Controller Killer, class<DamageType> dam
 function Timer()
 {
 	if (PotentiallyLeavingPlayer == None || PotentiallyLeavingPlayer.PlayerReplicationInfo != None && PotentiallyLeavingPlayer.PlayerReplicationInfo.bOnlySpectator) {
-		if (Mut.bDebug) {
+		if (EvenMatchMutator.bDebug) {
 			if (PotentiallyLeavingPlayer == None)
 				log("DEBUG: a player disconnected", 'EvenMatchDebug');
 			else
 				log("DEBUG: " $ PotentiallyLeavingPlayer.GetHumanReadableName() $ " became spectator", 'EvenMatchDebug');
 		}
-		Mut.CheckBalance(PotentiallyLeavingPlayer, True);
+		EvenMatchMutator.CheckBalance(PotentiallyLeavingPlayer, True);
 	}
 }
 
@@ -253,72 +263,77 @@ function ShuffleTeams()
 	Game.RemainingBots = 0;
 	Game.MinPlayers    = 0;
 	if (Game.NumBots > 0) {
-		if (Mut.bDebug) log("Removing " $ Game.NumBots $ " bots for shuffling", 'EvenMatchDebug');
+		if (EvenMatchMutator.bDebug) log("Removing " $ Game.NumBots $ " bots for shuffling", 'EvenMatchDebug');
 		Game.KillBots(Game.NumBots);
 	}
 	// find PRIs of active players
-	for (i = 0; i < Level.GRI.PRIArray.Length; ++i) {
-		PRI = Level.GRI.PRIArray[i];
-		if (!PRI.bOnlySpectator && PlayerController(PRI.Owner) != None && PlayerController(PRI.Owner).bIsPlayer) {
-			PPH = GetPointsPerHour(PRI);
-			if (PRI.Team.TeamIndex == 0) {
-				if (Mut.bDebug) log(PRI.PlayerName $ " is currently on red, " $ PPH $ " PPH", 'EvenMatchDebug');
-				for (j = 0; j < RedPRIs.Length && GetPointsPerHour(RedPRIs[j]) > PPH; ++j);
-				RedPRIs.Insert(j, 1);
-				RedPRIs[j] = PRI;
-				RedPPH += PPH;
+	if (Level.GRI.PRIArray.Length > 0) {
+		i = Level.GRI.PRIArray.Length - 1;
+		do {
+			PRI = Level.GRI.PRIArray[i];
+			if (!PRI.bOnlySpectator && PlayerController(PRI.Owner) != None && PlayerController(PRI.Owner).bIsPlayer) {
+				PPH = GetPointsPerHour(PRI);
+				switch (PRI.Team.TeamIndex) {
+					case 0:
+						if (EvenMatchMutator.bDebug) log(PRI.PlayerName $ " is currently on red, " $ PPH $ " PPH", 'EvenMatchDebug');
+						j = FindPPHSlot(RedPRIs, PPH);
+						RedPRIs.Insert(j, 1);
+						RedPRIs[j] = PRI;
+						RedPPH += PPH;
+						break;
+					case 1:
+						if (EvenMatchMutator.bDebug) log(PRI.PlayerName $ " is currently on blue, " $ PPH $ " PPH", 'EvenMatchDebug');
+						j = FindPPHSlot(BluePRIs, PPH);
+						BluePRIs.Insert(j, 1);
+						BluePRIs[j] = PRI;
+						BluePPH += PPH;
+						break;
+				}
 			}
-			else if (PRI.Team.TeamIndex == 1) {
-				if (Mut.bDebug) log(PRI.PlayerName $ " is currently on blue, " $ PPH $ " PPH", 'EvenMatchDebug');
-				for (j = 0; j < BluePRIs.Length && GetPointsPerHour(BluePRIs[j]) > PPH; ++j);
-				BluePRIs.Insert(j, 1);
-				BluePRIs[j] = PRI;
-				BluePPH += PPH;
-			}
-		}
+		} until (--i < 0);
 	}
-	if (Mut.bDebug) {
+	if (EvenMatchMutator.bDebug) {
 		log("Red team size " $ RedPRIs.Length $ ", combined PPH " $ RedPPH, 'EvenMatchDebug');
 		log("Blue team size " $ BluePRIs.Length $ ", combined PPH " $ BluePPH, 'EvenMatchDebug');
 	}
 	// let the game re-add missing bots
-	if (Mut.bDebug && OldNumBots > 0)
+	if (EvenMatchMutator.bDebug && OldNumBots > 0)
 		log("Will re-add " $ OldNumBots $ " bots later", 'EvenMatchDebug');
 	Game.RemainingBots = OldNumBots;
 	Game.MinPlayers    = OldMinPlayers;
 
 	// first balance team sizes
-	if (Mut.bDebug) log("Balancing team sizes...", 'EvenMatchDebug');
+	if (EvenMatchMutator.bDebug) log("Balancing team sizes...", 'EvenMatchDebug');
 	while (RedPRIs.Length > 0 && RedPRIs.Length - BluePRIs.Length > 1) {
 		// move a random red player to the blue team
 		i = Rand(RedPRIs.Length);
 		PPH = GetPointsPerHour(RedPRIs[i]);
-		for (j = 0; j < BluePRIs.Length && GetPointsPerHour(BluePRIs[j]) > PPH; ++j);
+		j = FindPPHSlot(BluePRIs, PPH);
 		BluePRIs.Insert(j, 1);
 		BluePRIs[j] = RedPRIs[i];
 		BluePPH += PPH;
 		RedPRIs.Remove(i, 1);
 		RedPPH -= PPH;
-		if (Mut.bDebug) log("-" @ BluePRIs[j].PlayerName $ " will move to blue (" $ PPH $ " PPH)", 'EvenMatchDebug');
+		if (EvenMatchMutator.bDebug) log("-" @ BluePRIs[j].PlayerName $ " will move to blue (" $ PPH $ " PPH)", 'EvenMatchDebug');
 	}
 	while (BluePRIs.Length > 0 && BluePRIs.Length - RedPRIs.Length > 1) {
 		// move a random blue player to the red team
 		i = Rand(BluePRIs.Length);
 		PPH = GetPointsPerHour(BluePRIs[i]);
-		for (j = 0; j < RedPRIs.Length && GetPointsPerHour(RedPRIs[j]) > PPH; ++j);
+		j = FindPPHSlot(RedPRIs, PPH);
 		RedPRIs.Insert(j, 1);
 		RedPRIs[j] = BluePRIs[i];
 		RedPPH += PPH;
 		BluePRIs.Remove(i, 1);
 		BluePPH -= PPH;
-		if (Mut.bDebug) log("-" @ RedPRIs[j].PlayerName $ " will move to red (" $ PPH $ " PPH)", 'EvenMatchDebug');
+		if (EvenMatchMutator.bDebug) log("-" @ RedPRIs[j].PlayerName $ " will move to red (" $ PPH $ " PPH)", 'EvenMatchDebug');
 	}
-	if (Mut.bDebug) {
+	if (EvenMatchMutator.bDebug) {
 		log("Red team size " $ RedPRIs.Length $ ", combined PPH " $ RedPPH, 'EvenMatchDebug');
 		log("Blue team size " $ BluePRIs.Length $ ", combined PPH " $ BluePPH, 'EvenMatchDebug');
 	}
 	// now balance team skill
-	if (Mut.bDebug) log("Balancing team PPH...", 'EvenMatchDebug');
+	if (EvenMatchMutator.bDebug) log("Balancing team PPH...", 'EvenMatchDebug');
 	do {
 		PPHDiff = RedPPH - BluePPH;
 		bFoundPair = False;
@@ -336,7 +351,7 @@ function ShuffleTeams()
 			}
 		}
 		if (bFoundPair) {
-			if (Mut.bDebug) log("Swapping " $ RedPRIs[iBest].PlayerName $ " (red) and " $ BluePRIs[jBest].PlayerName $ " (blue), PPH diff. " $ BestDiff, 'EvenMatchDebug');
+			if (EvenMatchMutator.bDebug) log("Swapping " $ RedPRIs[iBest].PlayerName $ " (red) and " $ BluePRIs[jBest].PlayerName $ " (blue), PPH diff. " $ BestDiff, 'EvenMatchDebug');
 			PRI = RedPRIs[iBest];
 			RedPRIs[iBest] = BluePRIs[jBest];
 			BluePRIs[jBest] = PRI;
@@ -344,25 +359,43 @@ function ShuffleTeams()
 			BluePPH += BestDiff;
 		}
 	} until (!bFoundPair);
-	if (Mut.bDebug) {
+	if (EvenMatchMutator.bDebug) {
 		log("Red team size " $ RedPRIs.Length $ ", combined PPH " $ RedPPH, 'EvenMatchDebug');
 		log("Blue team size " $ BluePRIs.Length $ ", combined PPH " $ BluePPH, 'EvenMatchDebug');
 	}
 	// apply team changes
-	if (Mut.bDebug) log("Applying team changes...", 'EvenMatchDebug');
+	if (EvenMatchMutator.bDebug) log("Applying team changes...", 'EvenMatchDebug');
 	for (i = 0; i < RedPRIs.Length; ++i) {
 		if (RedPRIs[i].Team.TeamIndex != 0) {
-			if (Mut.bDebug) log("Moving " $ RedPRIs[i].PlayerName $ " to red", 'EvenMatchDebug');
+			if (EvenMatchMutator.bDebug) log("Moving " $ RedPRIs[i].PlayerName $ " to red", 'EvenMatchDebug');
 			ChangeTeam(PlayerController(RedPRIs[i].Owner), 0);
 		}
 	}
 	for (i = 0; i < BluePRIs.Length; ++i) {
 		if (BluePRIs[i].Team.TeamIndex != 1) {
-			if (Mut.bDebug) log("Moving " $ BluePRIs[i].PlayerName $ " to blue", 'EvenMatchDebug');
+			if (EvenMatchMutator.bDebug) log("Moving " $ BluePRIs[i].PlayerName $ " to blue", 'EvenMatchDebug');
 			ChangeTeam(PlayerController(BluePRIs[i].Owner), 1);
 		}
 	}
-	if (Mut.bDebug) log("Teams shuffled.", 'EvenMatchDebug');
+	if (EvenMatchMutator.bDebug) log("Teams shuffled.", 'EvenMatchDebug');
+}
+
+
+function int FindPPHSlot(array<PlayerReplicationInfo> PRIs, float PPH)
+{
+	local int Low, High, Middle;
+
+	Low = 0;
+	High = PRIs.Length;
+	if (Low < High) do {
+		Middle = (High + Low) / 2;
+		if (GetPointsPerHour(PRIs[Middle]) > PPH)
+			Low = Middle + 1;
+		else
+			High = Middle;
+	} until (Low >= High);
+	
+	return Low;
 }
 
 
@@ -370,7 +403,7 @@ function float GetPointsPerHour(PlayerReplicationInfo PRI)
 {
 	local PlayerController PC;
 	local string ID;
-	local int i;
+	local int Low, High, Middle;
 	local float PPH;
 
 	PC = PlayerController(PRI.Owner);
@@ -382,24 +415,30 @@ function float GetPointsPerHour(PlayerReplicationInfo PRI)
 	}
 	// calculate current PPH
 	PPH = 3600 * FMax(PRI.Score, 0.1) / Max(Level.GRI.ElapsedTime - PRI.StartTime, 10);
-	for (i = 0; i < RecentPPH.Length; ++i) {
-		if (RecentPPH[i].ID == ID)
-			break;
-	}
+	
+	High = RecentPPH.Length;
+	if (Low < High) do {
+		Middle = (High + Low) / 2;
+		if (RecentPPH[Middle].ID < ID)
+			Low = Middle + 1;
+		else
+			High = Middle;
+	} until (Low >= High);
+	
 	if (PRI.Score != 0) {
 		// already scored, override score from earlier
-		if (i >= RecentPPH.Length)
-			RecentPPH.Length = i + 1;
+		if (Low >= RecentPPH.Length || RecentPPH[Low].ID != ID)
+			RecentPPH.Insert(Low, 1);
 
-		bSaveNeeded = bSaveNeeded || RecentPPH[i].PPH != PPH;
+		bSaveNeeded = bSaveNeeded || RecentPPH[Low].PPH != PPH;
 
-		RecentPPH[i].ID  = ID;
-		RecentPPH[i].PPH = PPH;
-		RecentPPH[i].TS  = GetTS();
+		RecentPPH[Low].ID  = ID;
+		RecentPPH[Low].PPH = PPH;
+		RecentPPH[Low].TS  = GetTS();
 	}
-	else if (i < RecentPPH.Length) {
+	else if (Low < RecentPPH.Length && RecentPPH[Low].ID == ID) {
 		// No score yet, use PPH from earlier
-		PPH = RecentPPH[i].PPH;
+		PPH = RecentPPH[Low].PPH;
 	}
 	return PPH;
 }

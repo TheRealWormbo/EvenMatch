@@ -1,16 +1,25 @@
 /**
-EvenMatchV2a7.EvenMatchReplicationInfo
+Replicates EvenMatch's opinion of the game state to clients for visualization.
 
-Creation date: 2015-08-15 08:21
-Last change: $Id$
 Copyright (c) 2015, Wormbo
+
+(1) This source code and any binaries compiled from it are provided "as-is",
+without warranty of any kind. (In other words, if it breaks something for you,
+that's entirely your problem, not mine.)
+(2) You are allowed to reuse parts of this source code and binaries compiled
+from it in any way that does not involve making money, breaking applicable laws
+or restricting anyone's human or civil rights.
+(3) You are allowed to distribute binaries compiled from modified versions of
+this source code only if you make the modified sources available as well. I'd
+prefer being mentioned in the credits for such binaries, but please do not make
+it seem like I endorse them in any way.
 */
 
 class EvenMatchReplicationInfo extends ReplicationInfo;
 
 
 var float Progress;
-var MutTeamBalance Mut;
+var MutTeamBalance EvenMatchMutator;
 
 
 replication
@@ -33,9 +42,9 @@ function Timer()
 {
 	local float NewProgress;
 	
-	if (Mut != None)
+	if (EvenMatchMutator != None)
 	{
-		NewProgress = Mut.GetTeamProgress();
+		NewProgress = EvenMatchMutator.GetTeamProgress();
 		if (Progress != NewProgress)
 			Progress = NewProgress;
 	}
@@ -48,6 +57,6 @@ function Timer()
 
 defaultproperties
 {
-     Progress=0.500000
-     NetUpdateFrequency=1.000000
+	Progress = 0.5
+	NetUpdateFrequency = 1
 }

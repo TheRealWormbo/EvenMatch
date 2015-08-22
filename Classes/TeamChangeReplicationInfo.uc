@@ -1,14 +1,19 @@
-/******************************************************************************
+/**
 Ensures team changes are properly replicated if they happen during respawn.
 
-Creation date: 2010-11-17 14:07
-Last change: $Id$
-Copyright © 2010, Wormbo
-Website: http://www.koehler-homepage.de/Wormbo/
-Feel free to reuse this code. Send me a note if you found it helpful or want
-to report bugs/provide improvements.
-Please ask for permission first, if you intend to make money off reused code.
-******************************************************************************/
+Copyright © 2010-2015, Wormbo
+
+(1) This source code and any binaries compiled from it are provided "as-is",
+without warranty of any kind. (In other words, if it breaks something for you,
+that's entirely your problem, not mine.)
+(2) You are allowed to reuse parts of this source code and binaries compiled
+from it in any way that does not involve making money, breaking applicable laws
+or restricting anyone's human or civil rights.
+(3) You are allowed to distribute binaries compiled from modified versions of
+this source code only if you make the modified sources available as well. I'd
+prefer being mentioned in the credits for such binaries, but please do not make
+it seem like I endorse them in any way.
+*/
 
 class TeamChangeReplicationInfo extends ReplicationInfo;
 
@@ -68,5 +73,6 @@ simulated function Tick(float DeltaTime)
 
 defaultproperties
 {
-     Team=255
+	Team = 255
 }
+

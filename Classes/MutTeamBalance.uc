@@ -1,10 +1,19 @@
-/******************************************************************************
-MutEvenMatch
+/**
+A team balancing mutator specifically designed for the Onslaught game mode.
 
-Creation date: 2009-07-19 10:36
-Last change: $Id$
-Copyright (c) 2009, Wormbo
-******************************************************************************/
+Copyright (c) 2009-2015, Wormbo
+
+(1) This source code and any binaries compiled from it are provided "as-is",
+without warranty of any kind. (In other words, if it breaks something for you,
+that's entirely your problem, not mine.)
+(2) You are allowed to reuse parts of this source code and binaries compiled
+from it in any way that does not involve making money, breaking applicable laws
+or restricting anyone's human or civil rights.
+(3) You are allowed to distribute binaries compiled from modified versions of
+this source code only if you make the modified sources available as well. I'd
+prefer being mentioned in the credits for such binaries, but please do not make
+it seem like I endorse them in any way.
+*/
 
 class MutTeamBalance extends Mutator config;
 
@@ -13,42 +22,55 @@ var() const editconst string Build;
 
 
 var config int ActivationDelay;
-var config int MinDesiredRoundDuration;
-var config bool bShuffleTeamsFromPreviousMatch;
+var config int MinDesiredFirstRoundDuration;
+var config bool bShuffleTeamsAtMatchStart;
 var config bool bRandomlyStartWithSidesSwapped;
-var config bool bConnectingPlayersBalanceTeams;
-var config bool bAlwaysIgnoreTeamPreference;
+var config bool bAssignConnectingPlayerTeam;
+var config bool bIgnoreConnectingPlayerTeamPreference;
 var config bool bAnnounceTeamChange;
 var config bool bIgnoreBotsForTeamSize;
+var config bool bBalanceTeamsBetweenRounds;
+var config bool bBalanceTeamsWhilePlaying;
+var config bool bBalanceTeamsDuringOvertime;
+var config bool bDisplayRoundProgressIndicator;
 var config float SmallTeamProgressThreshold;
 var config int SoftRebalanceDelay;
 var config int ForcedRebalanceDelay;
 var config float SwitchToWinnerProgressLimit;
 var config byte ValuablePlayerRankingPct;
 var config byte MinPlayerCount;
+var config string TeamsCallString;
 
 var config bool bDebug;
 
 var localized string lblActivationDelay, descActivationDelay;
-var localized string lblMinDesiredRoundDuration, descMinDesiredRoundDuration;
-var localized string lblShuffleTeamsFromPreviousMatch, descShuffleTeamsFromPreviousMatch;
+var localized string lblMinDesiredFirstRoundDuration, descMinDesiredFirstRoundDuration;
+var localized string lblShuffleTeamsAtMatchStart, descShuffleTeamsAtMatchStart;
 var localized string lblRandomlyStartWithSidesSwapped, descRandomlyStartWithSidesSwapped;
-var localized string lblConnectingPlayersBalanceTeams, descConnectingPlayersBalanceTeams;
-var localized string lblAlwaysIgnoreTeamPreference, descAlwaysIgnoreTeamPreference;
+var localized string lblAssignConnectingPlayerTeam, descAssignConnectingPlayerTeam;
+var localized string lblIgnoreConnectingPlayerTeamPreference, descIgnoreConnectingPlayerTeamPreference;
 var localized string lblAnnounceTeamChange, descAnnounceTeamChange;
 var localized string lblIgnoreBotsForTeamSize, descIgnoreBotsForTeamSize;
+var localized string lblBalanceTeamsBetweenRounds, descBalanceTeamsBetweenRounds;
+var localized string lblBalanceTeamsWhilePlaying, descBalanceTeamsWhilePlaying;
+var localized string lblBalanceTeamsDuringOvertime, descBalanceTeamsDuringOvertime;
+var localized string lblDisplayRoundProgressIndicator, descDisplayRoundProgressIndicator;
 var localized string lblSmallTeamProgressThreshold, descSmallTeamProgressThreshold;
 var localized string lblSoftRebalanceDelay, descSoftRebalanceDelay;
 var localized string lblForcedRebalanceDelay, descForcedRebalanceDelay;
 var localized string lblSwitchToWinnerProgressLimit, descSwitchToWinnerProgressLimit;
 var localized string lblValuablePlayerRankingPct, descValuablePlayerRankingPct;
 var localized string lblMinPlayerCount, descMinPlayerCount;
+var localized string lblTeamsCallString, descTeamsCallString;
 
 
 var ONSOnslaughtGame Game;
 var EvenMatchRules Rules;
 var EvenMatchReplicationInfo RepInfo;
+var EvenMatchTeamsCallSpectator TeamsCallSpec;
 var int SoftRebalanceCountdown, ForcedRebalanceCountdown;
+var bool bBalancingRequested;
+var int ForcedBalanceAttempt;
 
 struct TRecentTeam {
 	var PlayerController PC;
@@ -66,11 +88,41 @@ function PostBeginPlay()
 	log(Class$" build "$Build, 'EvenMatch');
 
 	Rules = Spawn(class'EvenMatchRules');
-	Rules.Mut = Self;
+	Rules.EvenMatchMutator = Self;
 	Game = ONSOnslaughtGame(Level.Game);
-	RepInfo = Spawn(class'EvenMatchReplicationInfo');
-	RepInfo.Mut = Self;
-	RepInfo.SetTimer(0.2, true);
+	if (bDisplayRoundProgressIndicator) {
+		RepInfo = Spawn(class'EvenMatchReplicationInfo');
+		RepInfo.EvenMatchMutator = Self;
+		RepInfo.SetTimer(0.2, true);
+	}
+	if (Level.NetMode == NM_DedicatedServer && !PlatformIsWindows())
+		ApplyLinuxDedicatedServerCrashFix();
+	
+	if (TeamsCallString != "") {
+		TeamsCallSpec = Spawn(class'EvenMatchTeamsCallSpectator');
+		if (TeamsCallSpec != None) {
+			TeamsCallSpec.EvenMatchMutator = Self;
+			TeamsCallSpec.TeamsCallString = TeamsCallString;
+		}
+	}
+}
+
+function ApplyLinuxDedicatedServerCrashFix()
+{
+	local Actor A;
+	
+	log("Applying Emitter crash workaround for Linux dedicated servers...", 'EvenMatch');
+
+	foreach AllActors(class'Actor', A) {
+		if (A.bNoDelete && A.bNotOnDedServer) {
+		
+			// prevent engine from disabling bNoDelete and destroying the actor
+			A.bNotOnDedServer = False;
+			
+			// hopefully retain some of the (probably neglible) performance gain intended by bNotOnDedServer
+			A.bStasis = True;
+		}
+	}
 }
 
 function bool MutatorIsAllowed()
@@ -83,6 +135,34 @@ function MatchStarting()
 	SetTimer(1.0, true);
 }
 
+function Mutate(string MutateString, PlayerController Sender)
+{
+	if (MutateString ~= "teams") {
+		HandleTeamsCall(Sender);
+		return;
+	}
+	
+	Super.Mutate(MutateString, Sender);
+}
+
+function HandleTeamsCall(PlayerController Sender)
+{
+	if (Sender != None && Sender.PlayerReplicationInfo != None) {
+		if ((!Sender.PlayerReplicationInfo.bOnlySpectator || Sender.PlayerReplicationInfo.bAdmin || Level.Game.AccessControl != None && Level.Game.AccessControl.IsAdmin(Sender)) && (bBalanceTeamsDuringOvertime || !Level.Game.bOverTime) && SoftRebalanceCountdown < 0 && !bBalancingRequested && IsBalancingActive()) {
+			if (RebalanceNeeded()) {
+				bBalancingRequested = True;
+				SoftRebalanceCountdown = SoftRebalanceDelay;
+				BroadcastLocalizedMessage(class'UnevenMessage', -2, Sender.PlayerReplicationInfo);
+			}
+			else {
+				BroadcastLocalizedMessage(class'UnevenChatMessage', -4);
+			}
+		}
+		else {
+			Sender.ReceiveLocalizedMessage(class'UnevenChatMessage', -3);
+		}
+	}
+}
 
 function bool IsBalancingActive()
 {
@@ -104,6 +184,66 @@ when they respawn at the start of the new round.
 function Reset()
 {
 	RecentTeams.Length = 0;
+	
+	if (bBalanceTeamsBetweenRounds)
+		BalanceTeams();
+}
+
+
+function BalanceTeams()
+{
+	local PlayerReplicationInfo PRI;
+	local int i, OldNumBots, OldMinPlayers;
+	local int SizeDiff, TeamSizes[2];
+	local byte BiggerTeam, LeadingTeam;
+
+	for (i = 0; i < Level.GRI.PRIArray.Length; i++) {
+		if (Level.GRI.PRIArray[i].Team != None && Level.GRI.PRIArray[i].Team.TeamIndex < 2 && (!bIgnoreBotsForTeamSize || !Level.GRI.PRIArray[i].bBot))
+			TeamSizes[Level.GRI.PRIArray[i].Team.TeamIndex]++;
+	}
+	SizeDiff = TeamSizes[0] - TeamSizes[1];
+	
+	BiggerTeam = byte(SizeDiff < 0);
+	LeadingTeam = byte(Level.GRI.Teams[0].Score <= Level.GRI.Teams[1].Score);
+	
+	if (SizeDiff == 0 || Abs(SizeDiff) == 1 && BiggerTeam != LeadingTeam)
+		return; // no need to balance teams
+	
+	log("Teams are uneven at start of new round, rebalancing...", 'EvenMatch');
+	
+	OldNumBots = Game.NumBots + Game.RemainingBots;
+	OldMinPlayers = Game.MinPlayers;
+	Game.RemainingBots = 0;
+	Game.MinPlayers    = 0;
+	if (Game.NumBots > 0) {
+		if (bDebug) log("Removing " $ Game.NumBots $ " bots for rebalancing", 'EvenMatchDebug');
+		Game.KillBots(Game.NumBots);
+	}
+	
+	SortPRIArray();
+	if (SizeDiff < 0)
+		SizeDiff = -SizeDiff;
+	if (LeadingTeam != BiggerTeam)
+		SizeDiff--; // smaller team did fine so far
+	
+	// find PRIs of active players
+	for (i = Level.GRI.PRIArray.Length - 1; i >= 0; --i) {
+		PRI = Level.GRI.PRIArray[i];
+		if (!PRI.bOnlySpectator && PlayerController(PRI.Owner) != None && PlayerController(PRI.Owner).bIsPlayer) {
+			if (PRI.Team.TeamIndex == BiggerTeam) {
+				Rules.ChangeTeam(PlayerController(PRI.Owner), 1 - BiggerTeam);
+				SizeDiff -= 2;
+				if (SizeDiff <= 0)
+					break;
+			}
+		}
+	}
+	
+	// let the game re-add missing bots
+	if (bDebug && OldNumBots > 0)
+		log("Will re-add " $ OldNumBots $ " bots later", 'EvenMatchDebug');
+	Game.RemainingBots = OldNumBots;
+	Game.MinPlayers    = OldMinPlayers;
 }
 
 
@@ -118,13 +258,13 @@ function ModifyLogin(out string Portal, out string Options)
 
 	Super.ModifyLogin(Portal, Options);
 
-	if (!bConnectingPlayersBalanceTeams && !bAlwaysIgnoreTeamPreference)
+	if (!bAssignConnectingPlayerTeam && !bIgnoreConnectingPlayerTeamPreference)
 		return;
 
 	RequestedTeam = Game.GetIntOption(Options, "team", 255);
-	if (bConnectingPlayersBalanceTeams) {
+	if (bAssignConnectingPlayerTeam) {
 	
-		if (!RebalanceNeeded(0, Progress, BiggerTeam) && !bAlwaysIgnoreTeamPreference)
+		if (!RebalanceNeeded(0, Progress, BiggerTeam) && !bIgnoreConnectingPlayerTeamPreference)
 			return;
 		
 		if (BiggerTeam == 255)
@@ -246,8 +386,12 @@ function Timer()
 	if (ForcedRebalanceCountdown > 0)
 		ForcedRebalanceCountdown--;
 
-	if (SoftRebalanceCountdown == 0)
-		CheckBalance(None, False);
+	if (bBalancingRequested || SoftRebalanceCountdown == 0)
+		ActuallyCheckBalance(None, False);
+	else
+		ForcedBalanceAttempt = 0;
+	
+	bBalancingRequested = False;
 }
 
 
@@ -283,9 +427,17 @@ function SortPRIArray()
 
 
 /**
-Check team balance and potentially move
+Check team balance and potentially switch players.
 */
 function CheckBalance(PlayerController Player, bool bIsLeaving)
+{
+	if (!bBalanceTeamsWhilePlaying || Level.Game.bOverTime && !bBalanceTeamsDuringOvertime)
+		return;
+
+	ActuallyCheckBalance(Player, bIsLeaving);
+}
+
+function ActuallyCheckBalance(PlayerController Player, bool bIsLeaving)
 {
 	local int i, SizeOffset;
 	local bool bFound;
@@ -293,7 +445,7 @@ function CheckBalance(PlayerController Player, bool bIsLeaving)
 	local array<PlayerController> Candidates;
 	local Controller C;
 	local float Progress;
-
+	
 	SortPRIArray();
 
 	if (Player != None && bIsLeaving) {
@@ -318,6 +470,7 @@ function CheckBalance(PlayerController Player, bool bIsLeaving)
 		else if (RecentTeams[i].PC.GetTeamNum() != RecentTeams[i].TeamNum) {
 			RecentTeams[i].TeamNum = 255; // keep considering the player until respawn
 			Candidates[Candidates.Length] = RecentTeams[i].PC;
+			if (bDebug) log(Level.TimeSeconds $ " Initial balancing candidate: " $ RecentTeams[i].PC.GetHumanReadableName(), 'EvenMatchDebug');
 		}
 	}
 	if (!bFound && !bIsLeaving && Player != None) {
@@ -325,6 +478,7 @@ function CheckBalance(PlayerController Player, bool bIsLeaving)
 		RecentTeams[i].PC = Player;
 		RecentTeams[i].TeamNum = 255; // consider the new player for team changes until respawn
 		Candidates[Candidates.Length] = Player;
+		if (bDebug) log(Level.TimeSeconds $ " Additional initial balancing candidate: " $ Player.GetHumanReadableName() $ " (triggered the check)", 'EvenMatchDebug');
 	}
 
 	if (RebalanceNeeded(SizeOffset, Progress, BiggerTeam)) {
@@ -351,9 +505,12 @@ function CheckBalance(PlayerController Player, bool bIsLeaving)
 			}
 			if (Candidates.Length == 0 && RebalanceStillNeeded(SizeOffset, Progress, BiggerTeam)) {
 				// try to find other candidates currently waiting to respawn
+				if (bDebug) log(Level.TimeSeconds $ " Not enough soft balancing candidates", 'EvenMatchDebug');
 				for (C = Level.ControllerList; C != None; C = C.NextController) {
-					if ((!bIsLeaving || C != Player) && PlayerController(C) != None && C.Pawn == None && C.GetTeamNum() == BiggerTeam && !IsRecentBalancer(Candidates[i]))
+					if ((!bIsLeaving || C != Player) && PlayerController(C) != None && C.Pawn == None && C.GetTeamNum() == BiggerTeam && !IsRecentBalancer(C)) {
 						Candidates[Candidates.Length] = PlayerController(C);
+						if (bDebug) log(Level.TimeSeconds $ " Additional soft balancing candidate: " $ C.GetHumanReadableName(), 'EvenMatchDebug');
+					}
 				}
 				while (Candidates.Length > 0 && RebalanceStillNeeded(SizeOffset, Progress, BiggerTeam)) {
 					// try switching a random candidate to the smaller team
@@ -378,8 +535,10 @@ function CheckBalance(PlayerController Player, bool bIsLeaving)
 			if (ForcedRebalanceCountdown == 0) {
 				// time is up, random alive players on the bigger team will be switched to the smaller team
 				for (C = Level.ControllerList; C != None; C = C.NextController) {
-					if ((!bIsLeaving || C != Player) && PlayerController(C) != None && C.GetTeamNum() == BiggerTeam && !IsKeyPlayer(C))
+					if ((!bIsLeaving || C != Player) && PlayerController(C) != None && C.GetTeamNum() == BiggerTeam && !IsKeyPlayer(C)) {
 						Candidates[Candidates.Length] = PlayerController(C);
+						if (bDebug) log(Level.TimeSeconds $ " Forced balancing candidate: " $ C.GetHumanReadableName(), 'EvenMatchDebug');
+					}
 				}
 				while (Candidates.Length > 0 && RebalanceStillNeeded(SizeOffset, Progress, BiggerTeam)) {
 					// try switching a random candidate to the smaller team
@@ -396,16 +555,19 @@ function CheckBalance(PlayerController Player, bool bIsLeaving)
 					}
 					Candidates.Remove(i, 1);
 				}
+				ForcedBalanceAttempt++;
 			}
 		}
 		else if (SoftRebalanceCountdown >= 0) {
 			SoftRebalanceCountdown   = -1;
 			ForcedRebalanceCountdown = -1;
+			ForcedBalanceAttempt     =  0;
 		}
 	}
 	else if (SoftRebalanceCountdown >= 0) {
 		SoftRebalanceCountdown   = -1;
 		ForcedRebalanceCountdown = -1;
+		ForcedBalanceAttempt     =  0;
 
 		// no rebalance needed, but check if players changed to winning team
 		if (SwitchToWinnerProgressLimit < 1.0 && !bIsLeaving) {
@@ -434,9 +596,11 @@ function bool IsValuablePlayer(Controller C)
 	if (C.PlayerReplicationInfo == None)
 		return false;
 
+	// if successive attempts fail, consider more players
+	rank = ForcedBalanceAttempt;
 	for (i = 0; i < Level.GRI.PRIArray.Length; i++) {
 		if (Level.GRI.PRIArray[i].Team == C.PlayerReplicationInfo.Team) {
-			if (!bFound)
+			if (!bFound && !Level.GRI.PRIArray[i].bBot)
 				rank++;
 			if (!bIgnoreBotsForTeamSize || !Level.GRI.PRIArray[i].bBot)
 				teamsize++;
@@ -445,7 +609,7 @@ function bool IsValuablePlayer(Controller C)
 			bFound = True;
 		}
 	}
-	return 100 * rank / teamsize >= ValuablePlayerRankingPct;
+	return 100 * rank >= ValuablePlayerRankingPct * teamsize;
 }
 
 
@@ -565,32 +729,61 @@ function bool IsKeyPlayer(Controller C)
 	local ONSPowerCore BestNode;
 	local byte TeamNum;
 
-	if (C == None || C.Pawn == None || C.Pawn.Health <= 0)
-		return false;
-
-	if (Vehicle(C.Pawn) != None && (Vehicle(C.Pawn).ImportantVehicle() || Vehicle(C.Pawn).HasOccupiedTurret()))
-		return true; // driving a tank or other large vehicle or has passenger
-
+	if (ForcedBalanceAttempt < 7 && IsValuablePlayer(C))
+		return true; // is a top scorer
+	
 	P = C.Pawn;
-	BestDist = 2000;
-	TeamNum = C.GetTeamNum();
-	for (i = 0; i < Game.PowerCores.Length; ++i) {
-		if (Level.TimeSeconds - Game.PowerCores[i].LastAttackTime < 1.0 && Game.PowerCores[i].LastAttacker == C.Pawn)
-			return true; // player is currently attacking this node/core
+	if (P == None || P.Health <= 0)
+		return false; // is dead, so not a key player
 
-		if (Level.TimeSeconds - Game.PowerCores[i].HealingTime < 0.5 && Game.PowerCores[i].LastHealedBy == C)
-			return true; // player currently heals a node
-
-		Dist = VSize(P.Location - Game.PowerCores[i].Location);
-		if (Dist < BestDist && IsNodeRelevantTo(TeamNum, Game.PowerCores[i])) {
-			BestDist = Dist;
-			BestNode = Game.PowerCores[i];
-		}
+	if (ForcedBalanceAttempt < 2 && P.HasUDamage() && (xPawn(P) == None || xPawn(P).UDamageTime > 5))
+		return true;
+		
+	if (ForcedBalanceAttempt < 3 && HasSuperWeapon(P))
+		return true;
+	
+	if (ForcedBalanceAttempt < 4 && LinkGun(P.Weapon) != None && LinkGun(P.Weapon).Linking)
+		return true; // is healing stuff
+	
+	if (Vehicle(P) != None) {
+		if (ForcedBalanceAttempt < 5 && Vehicle(P).HasOccupiedTurret())
+			return true; // driving vehicle with passenger
+			
+		if (ForcedBalanceAttempt < 6 && Vehicle(P).ImportantVehicle())
+			return true; // driving a tank or other important vehicle
 	}
 
+	if (ForcedBalanceAttempt < 1) {
+		BestDist = 2000;
+		TeamNum = C.GetTeamNum();
+		for (i = 0; i < Game.PowerCores.Length; ++i) {
+			if (Level.TimeSeconds - Game.PowerCores[i].LastAttackTime < 1.0 && Game.PowerCores[i].LastAttacker == C.Pawn)
+				return true; // player is currently attacking this node/core
+
+			if (Level.TimeSeconds - Game.PowerCores[i].HealingTime < 0.5 && Game.PowerCores[i].LastHealedBy == C)
+				return true; // player currently heals a node
+
+			Dist = VSize(P.Location - Game.PowerCores[i].Location);
+			if (Dist < BestDist && IsNodeRelevantTo(TeamNum, Game.PowerCores[i])) {
+				BestDist = Dist;
+				BestNode = Game.PowerCores[i];
+			}
+		}
+	}
 	return BestNode != None && (BestNode.DefenderTeamIndex == 1 - TeamNum || BestNode.bUnderAttack);
 }
 
+function bool HasSuperWeapon(Pawn P)
+{
+	local Inventory Inv;
+	
+	for (Inv = P.Inventory; Inv != None; Inv = Inv.Inventory) {
+		if (Weapon(Inv) != None && Weapon(Inv).InventoryGroup == 0 && Weapon(Inv).HasAmmo())
+			return true;
+	}
+	
+	return false;
+}
 
 function bool IsNodeRelevantTo(byte TeamNum, ONSPowerCore Node)
 {
@@ -613,20 +806,24 @@ static function FillPlayInfo(PlayInfo PlayInfo)
 	Super.FillPlayInfo(PlayInfo);
 
 	PlayInfo.AddSetting(default.FriendlyName, "ActivationDelay", default.lblActivationDelay, 0, 0, "Text", "3;0:999");
-	PlayInfo.AddSetting(default.FriendlyName, "MinDesiredRoundDuration", default.lblMinDesiredRoundDuration, 0, 0, "Text", "3;0:999");
-	PlayInfo.AddSetting(default.FriendlyName, "bShuffleTeamsFromPreviousMatch", default.lblShuffleTeamsFromPreviousMatch, 0, 0, "Check");
+	PlayInfo.AddSetting(default.FriendlyName, "MinDesiredFirstRoundDuration", default.lblMinDesiredFirstRoundDuration, 0, 0, "Text", "3;0:999");
+	PlayInfo.AddSetting(default.FriendlyName, "bShuffleTeamsAtMatchStart", default.lblShuffleTeamsAtMatchStart, 0, 0, "Check");
 	PlayInfo.AddSetting(default.FriendlyName, "bRandomlyStartWithSidesSwapped", default.lblRandomlyStartWithSidesSwapped, 0, 0, "Check");
-	PlayInfo.AddSetting(default.FriendlyName, "bConnectingPlayersBalanceTeams", default.lblConnectingPlayersBalanceTeams, 0, 0, "Check");
-	PlayInfo.AddSetting(default.FriendlyName, "bAlwaysIgnoreTeamPreference", default.lblAlwaysIgnoreTeamPreference, 0, 0, "Check");
+	PlayInfo.AddSetting(default.FriendlyName, "bAssignConnectingPlayerTeam", default.lblAssignConnectingPlayerTeam, 0, 0, "Check");
+	PlayInfo.AddSetting(default.FriendlyName, "bIgnoreConnectingPlayerTeamPreference", default.lblIgnoreConnectingPlayerTeamPreference, 0, 0, "Check");
 	PlayInfo.AddSetting(default.FriendlyName, "bAnnounceTeamChange", default.lblAnnounceTeamChange, 0, 0, "Check");
 	PlayInfo.AddSetting(default.FriendlyName, "bIgnoreBotsForTeamSize", default.lblIgnoreBotsForTeamSize, 0, 0, "Check");
+	PlayInfo.AddSetting(default.FriendlyName, "bBalanceTeamsBetweenRounds", default.lblBalanceTeamsBetweenRounds, 0, 0, "Check");
+	PlayInfo.AddSetting(default.FriendlyName, "bBalanceTeamsWhilePlaying", default.lblBalanceTeamsWhilePlaying, 0, 0, "Check");
+	PlayInfo.AddSetting(default.FriendlyName, "bBalanceTeamsDuringOvertime", default.lblBalanceTeamsDuringOvertime, 0, 0, "Check");
+	PlayInfo.AddSetting(default.FriendlyName, "bDisplayRoundProgressIndicator", default.lblDisplayRoundProgressIndicator, 0, 0, "Check");
 	PlayInfo.AddSetting(default.FriendlyName, "SmallTeamProgressThreshold", default.lblSmallTeamProgressThreshold, 0, 0, "Text", "4;0.0:1.0");
 	PlayInfo.AddSetting(default.FriendlyName, "SoftRebalanceDelay", default.lblSoftRebalanceDelay, 0, 0, "Text", "3;0:999");
 	PlayInfo.AddSetting(default.FriendlyName, "ForcedRebalanceDelay", default.lblForcedRebalanceDelay, 0, 0, "Text", "3;0:999");
 	PlayInfo.AddSetting(default.FriendlyName, "SwitchToWinnerProgressLimit", default.lblSwitchToWinnerProgressLimit, 0, 0, "Text", "4;0.0:1.0");
 	PlayInfo.AddSetting(default.FriendlyName, "ValuablePlayerRankingPct", default.lblValuablePlayerRankingPct, 0, 0, "Text", "2;0:90");
-
 	PlayInfo.AddSetting(default.FriendlyName, "MinPlayerCount", default.lblMinPlayerCount, 0, 0, "Text", "2;1:32");
+	PlayInfo.AddSetting(default.FriendlyName, "TeamsCallString", default.lblTeamsCallString, 0, 0, "Text", "40");
 
 	PlayInfo.PopClass();
 }
@@ -652,20 +849,28 @@ static event string GetDescriptionText(string PropName)
 	switch (PropName) {
 	case "ActivationDelay":
 		return default.descActivationDelay;
-	case "MinDesiredRoundDuration":
-		return default.descMinDesiredRoundDuration;
-	case "bShuffleTeamsFromPreviousMatch":
-		return default.descShuffleTeamsFromPreviousMatch;
+	case "MinDesiredFirstRoundDuration":
+		return default.descMinDesiredFirstRoundDuration;
+	case "bShuffleTeamsAtMatchStart":
+		return default.descShuffleTeamsAtMatchStart;
 	case "bRandomlyStartWithSidesSwapped":
 		return default.descRandomlyStartWithSidesSwapped;
-	case "bConnectingPlayersBalanceTeams":
-		return default.descConnectingPlayersBalanceTeams;
-	case "bAlwaysIgnoreTeamPreference":
-		return default.descAlwaysIgnoreTeamPreference;
+	case "bAssignConnectingPlayerTeam":
+		return default.descAssignConnectingPlayerTeam;
+	case "bIgnoreConnectingPlayerTeamPreference":
+		return default.descIgnoreConnectingPlayerTeamPreference;
 	case "bAnnounceTeamChange":
 		return default.descAnnounceTeamChange;
 	case "bIgnoreBotsForTeamSize":
 		return default.descIgnoreBotsForTeamSize;
+	case "bBalanceTeamsBetweenRounds":
+		return default.descBalanceTeamsBetweenRounds;
+	case "bBalanceTeamsWhilePlaying":
+		return default.descBalanceTeamsWhilePlaying;
+	case "bBalanceTeamsDuringOvertime":
+		return default.descBalanceTeamsDuringOvertime;
+	case "bDisplayRoundProgressIndicator":
+		return default.descDisplayRoundProgressIndicator;
 	case "SmallTeamProgressThreshold":
 		return default.descSmallTeamProgressThreshold;
 	case "SoftRebalanceDelay":
@@ -678,6 +883,8 @@ static event string GetDescriptionText(string PropName)
 		return default.descValuablePlayerRankingPct;
 	case "MinPlayerCount":
 		return default.descMinPlayerCount;
+	case "TeamsCallString":
+		return default.descTeamsCallString;
 	default:
 		return Super.GetDescriptionText(PropName);
 	}
@@ -690,49 +897,90 @@ static event string GetDescriptionText(string PropName)
 
 defaultproperties
 {
-     Build="2015-08-16 15:01"
-     ActivationDelay=10
-     MinDesiredRoundDuration=10
-     bShuffleTeamsFromPreviousMatch=True
-     bRandomlyStartWithSidesSwapped=True
-     bConnectingPlayersBalanceTeams=True
-     bAnnounceTeamChange=True
-     bIgnoreBotsForTeamSize=True
-     SmallTeamProgressThreshold=0.500000
-     SoftRebalanceDelay=10
-     ForcedRebalanceDelay=30
-     SwitchToWinnerProgressLimit=0.700000
-     ValuablePlayerRankingPct=75
-     MinPlayerCount=2
-     lblActivationDelay="Activation delay"
-     descActivationDelay="Team balance checks only start after this number of seconds elapsed in the match."
-     lblMinDesiredRoundDuration="Minimum desired round length (minutes)"
-     descMinDesiredRoundDuration="If the first round is shorter than this number of minutes, scores are reset and the round is restarted with shuffled teams."
-     lblShuffleTeamsFromPreviousMatch="Shuffle teams from previous match"
-     descShuffleTeamsFromPreviousMatch="Shuffle players based on PPH from the previous match to achieve even teams."
-     lblRandomlyStartWithSidesSwapped="Randomly start with sides swapped"
-     descRandomlyStartWithSidesSwapped="Randomly swap team bases at match startup already."
-     lblConnectingPlayersBalanceTeams="Connecting players balance teams"
-     descConnectingPlayersBalanceTeams="Override the team preference of a connecting player if teams are uneven."
-     lblAlwaysIgnoreTeamPreference="Always ignore team preference"
-     descAlwaysIgnoreTeamPreference="Completely ignore connecting players' team preference, always putting them on the smaller team."
-     lblAnnounceTeamChange="Announce team change"
-     descAnnounceTeamChange="Players receive a message whenever they respawn in a different team."
-     lblIgnoreBotsForTeamSize="Ignore bots for team size"
-     descIgnoreBotsForTeamSize="Don't count bots when comparing team sizes."
-     lblSmallTeamProgressThreshold="Small team progress threshold"
-     descSmallTeamProgressThreshold="Switch players from the bigger team if the smaller team has less than this share of the total match progress."
-     lblSoftRebalanceDelay="Soft rebalance delay"
-     descSoftRebalanceDelay="If teams stay unbalanced longer than this this, respawning players are switched to achieve rebalance."
-     lblForcedRebalanceDelay="Forced rebalance delay"
-     descForcedRebalanceDelay="If teams stay unbalanced longer than this this, alive players are switched to achieve rebalance."
-     lblSwitchToWinnerProgressLimit="Switch to winner progress limit"
-     descSwitchToWinnerProgressLimit="Only allow players to switch teams if their new team has less than this share of the total match progress. (1.0: no limit)"
-     lblValuablePlayerRankingPct="Valuable player ranking %"
-     descValuablePlayerRankingPct="If a player ranks among this top percentage of the team, he is considered too valuable to be switched during soft rebalancing."
-     lblMinPlayerCount="Minimum player count"
-     descMinPlayerCount="Minimum player count required before doing any kind of balancing."
-     bAddToServerPackages=True
-     FriendlyName="Team Balance (Onslaught-only)"
-     Description="Special team balancing rules for public Onslaught matches."
+	Build = "%%%%-%%-%% %%:%%"
+	FriendlyName = "Team Balance (Onslaught-only)"
+	Description  = "Special team balancing rules for public Onslaught matches."
+	bAddToServerPackages = True
+
+	ActivationDelay                       = 10
+	MinDesiredFirstRoundDuration          = 7
+	bShuffleTeamsAtMatchStart             = True
+	bRandomlyStartWithSidesSwapped        = True
+	bAssignConnectingPlayerTeam           = True
+	bIgnoreConnectingPlayerTeamPreference = True
+	bAnnounceTeamChange                   = True
+	bIgnoreBotsForTeamSize                = True
+	bBalanceTeamsBetweenRounds            = True
+	bBalanceTeamsWhilePlaying             = True
+	bBalanceTeamsDuringOvertime           = False
+	bDisplayRoundProgressIndicator        = False
+	SmallTeamProgressThreshold            = 0.3
+	SoftRebalanceDelay                    = 10
+	ForcedRebalanceDelay                  = 30
+	SwitchToWinnerProgressLimit           = 0.7
+	ValuablePlayerRankingPct              = 75
+	MinPlayerCount                        = 2
+	TeamsCallString                       = ""
+	
+	bDebug = True
+	
+	SoftRebalanceCountdown   = -1
+	ForcedRebalanceCountdown = -1
+
+	lblActivationDelay  = "Activation delay"
+	descActivationDelay = "Team balance checks only start after this number of seconds elapsed in the match."
+
+	lblMinDesiredFirstRoundDuration  = "Minimum desired first round length (minutes)"
+	descMinDesiredFirstRoundDuration = "If the first round is shorter than this number of minutes, scores are reset and the round is restarted with shuffled teams."
+
+	lblShuffleTeamsAtMatchStart  = "Shuffle teams at match start"
+	descShuffleTeamsAtMatchStart = "Initially assign players to teams based on PPH from the previous match to achieve even teams."
+
+	lblRandomlyStartWithSidesSwapped  = "Randomly start with sides swapped"
+	descRandomlyStartWithSidesSwapped = "Initially swap team bases randomly in 50% of matches."
+
+	lblAssignConnectingPlayerTeam  = "Assign connecting player's team"
+	descAssignConnectingPlayerTeam = "Override the team preference of a connecting player to balance team sizes."
+
+	lblIgnoreConnectingPlayerTeamPreference  = "Ignore connecting player team preference"
+	descIgnoreConnectingPlayerTeamPreference = "Ignore player preferences for a team color, allowing the game or Even Match to pick a team."
+
+	lblAnnounceTeamChange  = "Announce team change"
+	descAnnounceTeamChange = "Players receive a reminder message of their team color whenever they respawn in a different team."
+
+	lblIgnoreBotsForTeamSize  = "Ignore bots for team size"
+	descIgnoreBotsForTeamSize = "Don't count bots when comparing team sizes."
+
+	lblBalanceTeamsBetweenRounds  = "Balance teams between rounds"
+	descBalanceTeamsBetweenRounds = "Balance team sizes when a new round starts."
+
+	lblBalanceTeamsWhilePlaying  = "Automatically balance teams while playing"
+	descBalanceTeamsWhilePlaying = "Apply balancing during a round if the game becomes one-sided due to team size differences."
+
+	lblBalanceTeamsDuringOvertime  = "Allow balance teams during overtime"
+	descBalanceTeamsDuringOvertime = "Whether to allow team balancing after overtime started. Applies to automatic and player-requested balancing."
+
+	lblDisplayRoundProgressIndicator  = "Display round progress indicator"
+	descDisplayRoundProgressIndicator = "Displays a HUD gauge indicating, how close to victory either team seems to be. (This isn't a team balance indicator!)"
+
+	lblSmallTeamProgressThreshold  = "Small team progress threshold"
+	descSmallTeamProgressThreshold = "Switch players from the bigger team if the smaller team has less than this share of the total match progress."
+
+	lblSoftRebalanceDelay  = "Soft rebalance delay"
+	descSoftRebalanceDelay = "If teams stay unbalanced longer than this this, respawning players are switched to achieve rebalance."
+
+	lblForcedRebalanceDelay  = "Forced rebalance delay"
+	descForcedRebalanceDelay = "If teams stay unbalanced longer than this this, alive players are switched to achieve rebalance."
+
+	lblSwitchToWinnerProgressLimit  = "Switch to winner progress limit"
+	descSwitchToWinnerProgressLimit = "Only allow players to switch teams if their new team has less than this share of the total match progress. (1.0: no limit)"
+
+	lblValuablePlayerRankingPct  = "Valuable player ranking %"
+	descValuablePlayerRankingPct = "If a player ranks among this top percentage of the team (not counting bots), he is considered too valuable to be switched during rebalancing."
+
+	lblMinPlayerCount  = "Minimum player count"
+	descMinPlayerCount = "Minimum player count required before doing any kind of balancing."
+
+	lblTeamsCallString  = "Teams call chat text"
+	descTeamsCallString = "Players can 'say' this text in the chat to manually trigger a team balance check as alternative to the console command 'mutate teams'."
 }

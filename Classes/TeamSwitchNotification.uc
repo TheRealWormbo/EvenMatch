@@ -1,10 +1,20 @@
-/******************************************************************************
-TeamSwitchNotification
+/**
+Displays a message and plays an announcement that tells the player about his or
+her new team membership, e.g. after a forced team switch.
 
-Creation date: 2010-02-06 23:28
-Last change: $Id$
-Copyright (c) 2010, Wormbo
-******************************************************************************/
+Copyright (c) 2010-2015, Wormbo
+
+(1) This source code and any binaries compiled from it are provided "as-is",
+without warranty of any kind. (In other words, if it breaks something for you,
+that's entirely your problem, not mine.)
+(2) You are allowed to reuse parts of this source code and binaries compiled
+from it in any way that does not involve making money, breaking applicable laws
+or restricting anyone's human or civil rights.
+(3) You are allowed to distribute binaries compiled from modified versions of
+this source code only if you make the modified sources available as well. I'd
+prefer being mentioned in the credits for such binaries, but please do not make
+it seem like I endorse them in any way.
+*/
 
 class TeamSwitchNotification extends CriticalEventPlus;
 
@@ -65,10 +75,13 @@ static function color GetColor(optional int MessageSwitch, optional PlayerReplic
 
 defaultproperties
 {
-     YouAreOnTeam="You are on %t"
-     TeamChangeAnnouncement(0)=Sound'YouAreOnRed'
-     TeamChangeAnnouncement(1)=Sound'YouAreOnBlue'
-     bIsConsoleMessage=False
-     StackMode=SM_Down
-     PosY=0.800000
+	YouAreOnTeam = "You are on %t"
+	
+	TeamChangeAnnouncement(0) = Sound'YouAreOnRed'
+	TeamChangeAnnouncement(1) = Sound'YouAreOnBlue'
+	
+	bIsConsoleMessage = False
+	Lifetime  = 3
+	StackMode = SM_Down
+	PosY      = 0.8
 }

@@ -1,6 +1,5 @@
 /**
-This damage type is used to kill players who are being switching to another
-team, so everyone can see what's going on.
+EvenMatchV2a8.EvenMatchTeamsCallSpectator
 
 Copyright (c) 2015, Wormbo
 
@@ -16,8 +15,25 @@ prefer being mentioned in the credits for such binaries, but please do not make
 it seem like I endorse them in any way.
 */
 
-class DamTypeTeamChange extends Suicided abstract;
+class EvenMatchTeamsCallSpectator extends MessagingSpectator;
 
+
+var string TeamsCallString;
+var MutTeamBalance EvenMatchMutator;
+
+
+function InitPlayerReplicationInfo()
+{
+	Super.InitPlayerReplicationInfo();
+	PlayerReplicationInfo.PlayerName = "EvenMatch-TeamsListener";
+}
+
+
+function TeamMessage(PlayerReplicationInfo PRI, coerce string Message, name Type)
+{
+	if (EvenMatchMutator != None && Type == 'Say' && PRI != None && PlayerController(PRI.Owner) != None && Message ~= TeamsCallString)
+		EvenMatchMutator.HandleTeamsCall(PlayerController(PRI.Owner));
+}
 
 
 //=============================================================================
@@ -26,7 +42,4 @@ class DamTypeTeamChange extends Suicided abstract;
 
 defaultproperties
 {
-	DeathString="%o was forced to switch teams."
-	MaleSuicide="%o was forced to switch teams."
-	FemaleSuicide="%o was forced to switch teams."
 }
