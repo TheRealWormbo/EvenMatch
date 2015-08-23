@@ -21,7 +21,8 @@ class EvenMatchRules extends GameRules config(EvenMatchPPH) parseconfig;
 
 struct TPlayerPPH {
 	var config string ID;
-	var config float PPH;
+	var config float PastPPH;
+	var config float CurrentPPH;
 	var config int TS;
 };
 var config array<TPlayerPPH> RecentPPH;
@@ -31,6 +32,7 @@ var MutTeamBalance EvenMatchMutator;
 var int MinDesiredFirstRoundDuration;
 var bool bBalancing, bSaveNeeded;
 var int FirstRoundResult;
+var int MatchStartTS;
 
 var float LastRestartTime;
 var PlayerController LastRestarter, PotentiallyLeavingPlayer;
@@ -48,12 +50,12 @@ Purge outdated PPH data and randomly swap sides if configured.
 */
 function PreBeginPlay()
 {
-	local int i, Now, Diff;
+	local int i, Diff;
 
 	// remove obsolete entries
-	Now = GetTS();
+	MatchStartTS = GetTS();
 	for (i = RecentPPH.Length - 1; i >= 0; --i) {
-		Diff = Now - RecentPPH[i].TS;
+		Diff = MatchStartTS - RecentPPH[i].TS;
 		if (Diff > 172800) {
 			// older than 2 days
 			RecentPPH.Remove(i, 1);
@@ -425,20 +427,33 @@ function float GetPointsPerHour(PlayerReplicationInfo PRI)
 			High = Middle;
 	} until (Low >= High);
 	
-	if (PRI.Score != 0) {
+	if (PRI.Score > 0 && Level.GRI.ElapsedTime - PRI.StartTime > 30) {
 		// already scored, override score from earlier
-		if (Low >= RecentPPH.Length || RecentPPH[Low].ID != ID)
+		if (Low >= RecentPPH.Length || RecentPPH[Low].ID != ID) {
 			RecentPPH.Insert(Low, 1);
-
-		bSaveNeeded = bSaveNeeded || RecentPPH[Low].PPH != PPH;
-
-		RecentPPH[Low].ID  = ID;
-		RecentPPH[Low].PPH = PPH;
-		RecentPPH[Low].TS  = GetTS();
+			RecentPPH[Low].ID = ID;
+			RecentPPH[Low].PastPPH = -1;
+			RecentPPH[Low].CurrentPPH = PPH;
+			RecentPPH[Low].TS = MatchStartTS;
+			bSaveNeeded = True;
+		}
+		else {
+			if (RecentPPH[Low].TS != MatchStartTS) {
+				if (RecentPPH[Low].PastPPH == -1)
+					RecentPPH[Low].PastPPH = RecentPPH[Low].CurrentPPH;
+				else
+					RecentPPH[Low].PastPPH = 0.5 * (RecentPPH[Low].PastPPH + RecentPPH[Low].CurrentPPH);
+				RecentPPH[Low].TS = MatchStartTS;
+				bSaveNeeded = True;
+			}
+			RecentPPH[Low].CurrentPPH = PPH;
+			if (RecentPPH[Low].PastPPH != -1)
+				PPH = 0.5 * (RecentPPH[Low].PastPPH + RecentPPH[Low].CurrentPPH);
+		}
 	}
 	else if (Low < RecentPPH.Length && RecentPPH[Low].ID == ID) {
 		// No score yet, use PPH from earlier
-		PPH = RecentPPH[Low].PPH;
+		PPH = RecentPPH[Low].PastPPH;
 	}
 	return PPH;
 }
