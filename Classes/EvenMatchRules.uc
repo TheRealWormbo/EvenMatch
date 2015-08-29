@@ -254,50 +254,59 @@ function ScoreKill(Controller Killer, Controller Killed)
 
 function ShuffleTeams()
 {
-	local PlayerReplicationInfo PRI;
-	local array<PlayerReplicationInfo> RedPRIs, BluePRIs; // sorted by points per hour
-	local int i, j, OldNumBots, OldMinPlayers, iBest, jBest;
-	local float PPH, PPH2, RedPPH, BluePPH, PPHDiff, BestDiff;
-	local bool bFoundPair;
+	local PlayerReplicationInfo PRI, PRI2;
+	local array<PlayerReplicationInfo> PRIs, RedPRIs, BluePRIs;
+	local array<float> PPHs;
+	local int Index, OldNumBots, OldMinPlayers;
+	local int Low, High, Middle;
+	local float PPH, PPH2, RedPPH, BluePPH, TotalPPH;
 
+	// complexity below documented in terms of n players and m stored PPH values
+	
 	OldNumBots = Game.NumBots + Game.RemainingBots;
 	OldMinPlayers = Game.MinPlayers;
 	Game.RemainingBots = 0;
 	Game.MinPlayers    = 0;
 	if (Game.NumBots > 0) {
-		if (EvenMatchMutator.bDebug) log("Removing " $ Game.NumBots $ " bots for shuffling", 'EvenMatchDebug');
+		if (EvenMatchMutator.bDebug)
+			log("Removing " $ Game.NumBots $ " bots for shuffling", 'EvenMatchDebug');
 		Game.KillBots(Game.NumBots);
 	}
-	// find PRIs of active players
+	// find PRIs of active players and sort ascending by PPH
 	if (Level.GRI.PRIArray.Length > 0) {
-		i = Level.GRI.PRIArray.Length - 1;
+		Index = Level.GRI.PRIArray.Length - 1;
 		do {
-			PRI = Level.GRI.PRIArray[i];
+			PRI = Level.GRI.PRIArray[Index];
 			if (!PRI.bOnlySpectator && PlayerController(PRI.Owner) != None && PlayerController(PRI.Owner).bIsPlayer) {
-				PPH = GetPointsPerHour(PRI);
-				switch (PRI.Team.TeamIndex) {
-					case 0:
-						if (EvenMatchMutator.bDebug) log(PRI.PlayerName $ " is currently on red, " $ PPH $ " PPH", 'EvenMatchDebug');
-						j = FindPPHSlot(RedPRIs, PPH);
-						RedPRIs.Insert(j, 1);
-						RedPRIs[j] = PRI;
-						RedPPH += PPH;
-						break;
-					case 1:
-						if (EvenMatchMutator.bDebug) log(PRI.PlayerName $ " is currently on blue, " $ PPH $ " PPH", 'EvenMatchDebug');
-						j = FindPPHSlot(BluePRIs, PPH);
-						BluePRIs.Insert(j, 1);
-						BluePRIs[j] = PRI;
-						BluePPH += PPH;
-						break;
-				}
+			
+				PPH = GetPointsPerHour(PRI); // binary search O(log m)
+				TotalPPH += PPH;
+				if (EvenMatchMutator.bDebug)
+					log(PRI.PlayerName @ PPH $ " PPH, currently on " $ PRI.Team.GetHumanReadableName(), 'EvenMatchDebug');
+				
+				// binary search O(log n)
+				Low = 0;
+				High = PRIs.Length;
+				if (Low < High) do {
+					Middle = (High + Low) / 2;
+					if (PPHs[Middle] < PPH) // ascending by PPH
+						Low = Middle + 1;
+					else
+						High = Middle;
+				} until (Low >= High);
+				
+				// Insert can be considered O(1) here due to huge contant overhead and small actual n
+				PRIs.Insert(Low, 1);
+				PRIs[Low] = PRI;
+				PPHs.Insert(Low, 1);
+				PPHs[Low] = PPH;
 			}
-		} until (--i < 0);
-	}
-	if (EvenMatchMutator.bDebug) {
-		log("Red team size " $ RedPRIs.Length $ ", combined PPH " $ RedPPH, 'EvenMatchDebug');
-		log("Blue team size " $ BluePRIs.Length $ ", combined PPH " $ BluePPH, 'EvenMatchDebug');
-	}
+		} until (--Index < 0);
+	} // entire if: O(n * (log n + log m))
+	
+	if (EvenMatchMutator.bDebug)
+		log(PRIs.Length $ " players, combined PPH " $ TotalPPH $ ", balance target PPH per team " $ 0.5 * TotalPPH, 'EvenMatchDebug');
+	
 	// let the game re-add missing bots
 	if (EvenMatchMutator.bDebug && OldNumBots > 0)
 		log("Will re-add " $ OldNumBots $ " bots later", 'EvenMatchDebug');
@@ -305,78 +314,76 @@ function ShuffleTeams()
 	Game.MinPlayers    = OldMinPlayers;
 
 	// first balance team sizes
-	if (EvenMatchMutator.bDebug) log("Balancing team sizes...", 'EvenMatchDebug');
-	while (RedPRIs.Length > 0 && RedPRIs.Length - BluePRIs.Length > 1) {
-		// move a random red player to the blue team
-		i = Rand(RedPRIs.Length);
-		PPH = GetPointsPerHour(RedPRIs[i]);
-		j = FindPPHSlot(BluePRIs, PPH);
-		BluePRIs.Insert(j, 1);
-		BluePRIs[j] = RedPRIs[i];
-		BluePPH += PPH;
-		RedPRIs.Remove(i, 1);
-		RedPPH -= PPH;
-		if (EvenMatchMutator.bDebug) log("-" @ BluePRIs[j].PlayerName $ " will move to blue (" $ PPH $ " PPH)", 'EvenMatchDebug');
-	}
-	while (BluePRIs.Length > 0 && BluePRIs.Length - RedPRIs.Length > 1) {
-		// move a random blue player to the red team
-		i = Rand(BluePRIs.Length);
-		PPH = GetPointsPerHour(BluePRIs[i]);
-		j = FindPPHSlot(RedPRIs, PPH);
-		RedPRIs.Insert(j, 1);
-		RedPRIs[j] = BluePRIs[i];
-		RedPPH += PPH;
-		BluePRIs.Remove(i, 1);
-		BluePPH -= PPH;
-		if (EvenMatchMutator.bDebug) log("-" @ RedPRIs[j].PlayerName $ " will move to red (" $ PPH $ " PPH)", 'EvenMatchDebug');
-	}
-	if (EvenMatchMutator.bDebug) {
-		log("Red team size " $ RedPRIs.Length $ ", combined PPH " $ RedPPH, 'EvenMatchDebug');
-		log("Blue team size " $ BluePRIs.Length $ ", combined PPH " $ BluePPH, 'EvenMatchDebug');
-	}
-	// now balance team skill
-	if (EvenMatchMutator.bDebug) log("Balancing team PPH...", 'EvenMatchDebug');
-	do {
-		PPHDiff = RedPPH - BluePPH;
-		bFoundPair = False;
-		BestDiff = 0;
-		for (i = 0; i < RedPRIs.Length; ++i) {
-			PPH = GetPointsPerHour(RedPRIs[i]);
-			for (j = 0; j < BluePRIs.Length; ++j) {
-				PPH2 = GetPointsPerHour(BluePRIs[j]);
-				if (Abs(PPHDiff - 2 * BestDiff) > Abs(PPHDiff - 2 * (PPH - PPH2))) {
-					bFoundPair = True;
-					iBest = i;
-					jBest = j;
-					BestDiff = PPH - PPH2;
-				}
+	if (EvenMatchMutator.bDebug) log("Balancing team sizes and PPH...", 'EvenMatchDebug');
+	if (PPHs.Length > 0) {
+		Index = PPHs.Length;
+		if ((Index & 1) != 0) {
+			PRI = PRIs[0];
+			PPH = PPHs[0];
+			if (Rand(2) == 0) {
+				if (EvenMatchMutator.bDebug)
+					log("Odd player count, randomly assigning " $ PRI.PlayerName $ " to red (" $ PPH $ " PPH)", 'EvenMatchDebug');
+				
+				RedPRIs[RedPRIs.Length] = PRI;
+				RedPPH += PPH;
+			}
+			else {
+				if (EvenMatchMutator.bDebug)
+					log("Odd player count, randomly assigning " $ PRI.PlayerName $ " to blue (" $ PPH $ " PPH)", 'EvenMatchDebug');
+				
+				BluePRIs[BluePRIs.Length] = PRI;
+				BluePPH += PPH;
 			}
 		}
-		if (bFoundPair) {
-			if (EvenMatchMutator.bDebug) log("Swapping " $ RedPRIs[iBest].PlayerName $ " (red) and " $ BluePRIs[jBest].PlayerName $ " (blue), PPH diff. " $ BestDiff, 'EvenMatchDebug');
-			PRI = RedPRIs[iBest];
-			RedPRIs[iBest] = BluePRIs[jBest];
-			BluePRIs[jBest] = PRI;
-			RedPPH  -= BestDiff;
-			BluePPH += BestDiff;
+	
+		while (Index > 1) {
+			PRI = PRIs[Index];
+			PPH = PPHs[--Index];
+			PRI2 = PRIs[Index];
+			PPH2 = PPHs[--Index];
+			// ascending sort, so PPH >= PPH2
+			
+			if (EvenMatchMutator.bDebug)
+				log("Assigning " $ PRI.PlayerName $ " (" $ PPH $ " PPH) and " $ PRI2.PlayerName $ " (" $ PPH2 $ " PPH)", 'EvenMatchDebug');
+			
+			if (RedPPH > BluePPH) {
+				RedPRIs[RedPRIs.Length] = PRI2;
+				RedPPH += PPH2;
+				BluePRIs[BluePRIs.Length] = PRI;
+				BluePPH += PPH;
+				
+				if (EvenMatchMutator.bDebug)
+					log(PRI.PlayerName $ " will be on blue (now " $ BluePPH $ " PPH), " $ PRI2.PlayerName $ " will be on red (now " $ RedPPH $ " PPH)", 'EvenMatchDebug');
+			}
+			else {
+				RedPRIs[RedPRIs.Length] = PRI;
+				RedPPH += PPH;
+				BluePRIs[BluePRIs.Length] = PRI2;
+				BluePPH += PPH2;
+				
+				if (EvenMatchMutator.bDebug)
+					log(PRI.PlayerName $ " will be on red (now " $ RedPPH $ " PPH), " $ PRI2.PlayerName $ " will be on blue (now " $ BluePPH $ " PPH)", 'EvenMatchDebug');
+			}
 		}
-	} until (!bFoundPair);
+	} // entire if: O(n)
+	
 	if (EvenMatchMutator.bDebug) {
 		log("Red team size " $ RedPRIs.Length $ ", combined PPH " $ RedPPH, 'EvenMatchDebug');
 		log("Blue team size " $ BluePRIs.Length $ ", combined PPH " $ BluePPH, 'EvenMatchDebug');
 	}
+	
 	// apply team changes
 	if (EvenMatchMutator.bDebug) log("Applying team changes...", 'EvenMatchDebug');
-	for (i = 0; i < RedPRIs.Length; ++i) {
-		if (RedPRIs[i].Team.TeamIndex != 0) {
-			if (EvenMatchMutator.bDebug) log("Moving " $ RedPRIs[i].PlayerName $ " to red", 'EvenMatchDebug');
-			ChangeTeam(PlayerController(RedPRIs[i].Owner), 0);
+	for (Index = 0; Index < RedPRIs.Length; ++Index) {
+		if (RedPRIs[Index].Team.TeamIndex != 0) {
+			if (EvenMatchMutator.bDebug) log("Moving " $ RedPRIs[Index].PlayerName $ " to red", 'EvenMatchDebug');
+			ChangeTeam(PlayerController(RedPRIs[Index].Owner), 0);
 		}
 	}
-	for (i = 0; i < BluePRIs.Length; ++i) {
-		if (BluePRIs[i].Team.TeamIndex != 1) {
-			if (EvenMatchMutator.bDebug) log("Moving " $ BluePRIs[i].PlayerName $ " to blue", 'EvenMatchDebug');
-			ChangeTeam(PlayerController(BluePRIs[i].Owner), 1);
+	for (Index = 0; Index < BluePRIs.Length; ++Index) {
+		if (BluePRIs[Index].Team.TeamIndex != 1) {
+			if (EvenMatchMutator.bDebug) log("Moving " $ BluePRIs[Index].PlayerName $ " to blue", 'EvenMatchDebug');
+			ChangeTeam(PlayerController(BluePRIs[Index].Owner), 1);
 		}
 	}
 	if (EvenMatchMutator.bDebug) log("Teams shuffled.", 'EvenMatchDebug');
