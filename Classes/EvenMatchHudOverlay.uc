@@ -18,7 +18,7 @@ it seem like I endorse them in any way.
 class EvenMatchHudOverlay extends HudOverlay;
 
 
-#exec Texture Import File=ProgressArrow.tga Alpha=1 UClampMode=Clamp VClampMode=Clamp LODSet=5
+#exec Texture Import File=Textures\ProgressArrow.tga Alpha=1 UClampMode=Clamp VClampMode=Clamp LODSet=5
 
 
 var() int ProgressMaxYaw;

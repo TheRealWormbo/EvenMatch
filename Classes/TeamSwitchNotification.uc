@@ -23,8 +23,8 @@ class TeamSwitchNotification extends CriticalEventPlus;
 // Imports
 //=============================================================================
 
-#exec audio import file=YouAreOnRed.wav
-#exec audio import file=YouAreOnBlue.wav
+#exec audio import file=Sounds\YouAreOnRed.wav
+#exec audio import file=Sounds\YouAreOnBlue.wav
 
 
 //=============================================================================
