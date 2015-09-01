@@ -135,7 +135,12 @@ IF NOT EXIST "%OutputFile%" (
 	)
 ) ELSE (
 	ECHO Build successfully created %GameBase%\System\%OutputFile%
+	ECHO Applying timestamp...
 	%ProjectFolder%Build\Timestamp "%OutputFile%"
+	ECHO Compressing package for redirect...
+	UCC Compress %OutputFile%
+	ECHO.
+	ECHO Build complete.
 )
 
 PAUSE
