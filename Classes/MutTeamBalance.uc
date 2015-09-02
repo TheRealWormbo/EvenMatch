@@ -329,7 +329,7 @@ function RememberForcedSwitch(PlayerController PC, string Reason)
 	local int i, Low, High, Middle;
 	local TRecentTeam Entry;
 
-	log("Forced team change: " $ PC.GetHumanReadableName() @ PC.GetTeamNum() @ Reason, 'EvenMatch');
+	log("Forced team change: " $ PC.GetHumanReadableName() @ PC.PlayerReplicationInfo.Team.GetHumanReadableName() @ Reason, 'EvenMatch');
 	PC.ReceiveLocalizedMessage(class'UnevenMessage', -5);
 
 	// find entry
@@ -487,22 +487,22 @@ function ActuallyCheckBalance(PlayerController Player, bool bIsLeaving)
 			SoftRebalanceCountdown = SoftRebalanceDelay;
 			ForcedRebalanceCountdown = -1; // not yet!
 		}
+		if (Candidates.Length > 0 && (SoftRebalanceCountdown == 0 || Abs(1 - BiggerTeam - Progress) > SwitchToWinnerProgressLimit)) {
+			// there are players who switched teams but have not yet respawned
+			do {
+				// try switching a random team changer to the smaller team
+				i = Rand(Candidates.Length);
+				if ((!bIsLeaving || Candidates[i] != Player) && Candidates[i].GetTeamNum() == BiggerTeam && !IsRecentBalancer(Candidates[i])) {
+					Game.ChangeTeam(Candidates[i], 1 - BiggerTeam, true);
+					RememberForcedSwitch(Candidates[i], "soft-balance by undoing team switch");
+				}
+				Candidates.Remove(i, 1);
+			} until (Candidates.Length == 0 || !RebalanceStillNeeded(SizeOffset, Progress, BiggerTeam));
+		}
 		
 		if (SoftRebalanceCountdown == 0) {
 			if (ForcedRebalanceCountdown < 0 && ForcedRebalanceDelay > 0) {
 				BroadcastLocalizedMessage(class'UnevenChatMessage', 3);
-			}
-			if (Candidates.Length > 0) {
-				// there are players who switched teams but have not yet respawned
-				do {
-					// try switching a random team changer to the smaller team
-					i = Rand(Candidates.Length);
-					if ((!bIsLeaving || Candidates[i] != Player) && Candidates[i].GetTeamNum() == BiggerTeam && !IsRecentBalancer(Candidates[i])) {
-						Game.ChangeTeam(Candidates[i], 1 - BiggerTeam, true);
-						RememberForcedSwitch(Candidates[i], "soft-balance by undoing team switch");
-					}
-					Candidates.Remove(i, 1);
-				} until (Candidates.Length == 0 || !RebalanceStillNeeded(SizeOffset, Progress, BiggerTeam));
 			}
 			if (Candidates.Length == 0 && RebalanceStillNeeded(SizeOffset, Progress, BiggerTeam)) {
 				// try to find other candidates currently waiting to respawn
@@ -576,7 +576,7 @@ function ActuallyCheckBalance(PlayerController Player, bool bIsLeaving)
 			while (Candidates.Length > 0) {
 				i = Rand(Candidates.Length);
 				SizeOffset = 4 * Candidates[i].GetTeamNum() - 2; // red -2, blue +2
-				if (!IsRecentBalancer(Candidates[i]) && Abs(Candidates[i].GetTeamNum() - Progress) > SwitchToWinnerProgressLimit && !RebalanceStillNeeded(SizeOffset, Progress, BiggerTeam)) {
+				if (!IsRecentBalancer(Candidates[i]) && Abs(1 - Candidates[i].GetTeamNum() - Progress) > SwitchToWinnerProgressLimit && !RebalanceStillNeeded(SizeOffset, Progress, BiggerTeam)) {
 					// try switching the team changer back to his previous team
 					Game.ChangeTeam(Candidates[i], 1 - Candidates[i].GetTeamNum(), true);
 					RememberForcedSwitch(Candidates[i], "undoing switch to winning team");
@@ -719,7 +719,7 @@ function bool IsRecentBalancer(Controller C)
 	else {
 		i--;
 	}
-	return i >= 0 && Level.TimeSeconds - RecentTeams[i].LastForcedSwitch < 60 && RecentTeams[i].ForcedTeamNum == C.GetTeamNum();
+	return i >= 0 && RecentTeams[i].LastForcedSwitch > 0 && Level.TimeSeconds - RecentTeams[i].LastForcedSwitch < 60 && RecentTeams[i].ForcedTeamNum == C.GetTeamNum();
 }
 
 function bool IsKeyPlayer(Controller C)
@@ -904,7 +904,7 @@ defaultproperties
 	bAddToServerPackages = True
 
 	ActivationDelay                       = 10
-	MinDesiredFirstRoundDuration          = 7
+	MinDesiredFirstRoundDuration          = 5
 	bShuffleTeamsAtMatchStart             = True
 	bRandomlyStartWithSidesSwapped        = True
 	bAssignConnectingPlayerTeam           = True
@@ -918,8 +918,8 @@ defaultproperties
 	SmallTeamProgressThreshold            = 0.3
 	SoftRebalanceDelay                    = 10
 	ForcedRebalanceDelay                  = 30
-	SwitchToWinnerProgressLimit           = 0.7
-	ValuablePlayerRankingPct              = 75
+	SwitchToWinnerProgressLimit           = 0.6
+	ValuablePlayerRankingPct              = 50
 	MinPlayerCount                        = 2
 	TeamsCallString                       = ""
 	

@@ -131,6 +131,7 @@ function NavigationPoint FindPlayerStart(Controller Player, optional byte InTeam
 		LastRestarter = PlayerController(Player);
 		LastRestartTime = Level.TimeSeconds;
 
+		if (EvenMatchMutator.bDebug) log(Level.TimeSeconds @ Player.GetHumanReadableName() $ " switched to " $ Player.PlayerReplicationInfo.Team.GetHumanReadableName(), 'EvenMatchDebug');
 		EvenMatchMutator.CheckBalance(LastRestarter, False);
 	}
 	return Super.FindPlayerStart(Player, InTeam, IncomingName);
