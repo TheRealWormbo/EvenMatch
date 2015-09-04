@@ -32,6 +32,8 @@ var config bool bIgnoreBotsForTeamSize;
 var config bool bBalanceTeamsBetweenRounds;
 var config bool bBalanceTeamsWhilePlaying;
 var config bool bBalanceTeamsDuringOvertime;
+var config bool bBalanceTeamsOnPlayerRequest;
+var config bool bBalanceTeamsOnAdminRequest;
 var config bool bDisplayRoundProgressIndicator;
 var config float SmallTeamProgressThreshold;
 var config int SoftRebalanceDelay;
@@ -40,6 +42,7 @@ var config float SwitchToWinnerProgressLimit;
 var config byte ValuablePlayerRankingPct;
 var config byte MinPlayerCount;
 var config string TeamsCallString;
+var config int DeletePlayerPPHAfterDaysNotSeen;
 
 var config bool bDebug;
 
@@ -54,6 +57,8 @@ var localized string lblIgnoreBotsForTeamSize, descIgnoreBotsForTeamSize;
 var localized string lblBalanceTeamsBetweenRounds, descBalanceTeamsBetweenRounds;
 var localized string lblBalanceTeamsWhilePlaying, descBalanceTeamsWhilePlaying;
 var localized string lblBalanceTeamsDuringOvertime, descBalanceTeamsDuringOvertime;
+var localized string lblBalanceTeamsOnPlayerRequest, descBalanceTeamsOnPlayerRequest;
+var localized string lblBalanceTeamsOnAdminRequest, descBalanceTeamsOnAdminRequest;
 var localized string lblDisplayRoundProgressIndicator, descDisplayRoundProgressIndicator;
 var localized string lblSmallTeamProgressThreshold, descSmallTeamProgressThreshold;
 var localized string lblSoftRebalanceDelay, descSoftRebalanceDelay;
@@ -62,6 +67,7 @@ var localized string lblSwitchToWinnerProgressLimit, descSwitchToWinnerProgressL
 var localized string lblValuablePlayerRankingPct, descValuablePlayerRankingPct;
 var localized string lblMinPlayerCount, descMinPlayerCount;
 var localized string lblTeamsCallString, descTeamsCallString;
+var localized string lblDeletePlayerPPHAfterDaysNotSeen, descDeletePlayerPPHAfterDaysNotSeen;
 
 
 var ONSOnslaughtGame Game;
@@ -87,8 +93,8 @@ function PostBeginPlay()
 {
 	log(Class$" build "$Build, 'EvenMatch');
 
-	Rules = Spawn(class'EvenMatchRules');
-	Rules.EvenMatchMutator = Self;
+	Rules = Spawn(class'EvenMatchRules', Self);
+	
 	Game = ONSOnslaughtGame(Level.Game);
 	if (bDisplayRoundProgressIndicator) {
 		RepInfo = Spawn(class'EvenMatchReplicationInfo');
@@ -148,7 +154,7 @@ function Mutate(string MutateString, PlayerController Sender)
 function HandleTeamsCall(PlayerController Sender)
 {
 	if (Sender != None && Sender.PlayerReplicationInfo != None) {
-		if ((!Sender.PlayerReplicationInfo.bOnlySpectator || Sender.PlayerReplicationInfo.bAdmin || Level.Game.AccessControl != None && Level.Game.AccessControl.IsAdmin(Sender)) && SoftRebalanceCountdown != 0 && !bBalancingRequested && IsBalancingActive()) {
+		if ((!Sender.PlayerReplicationInfo.bOnlySpectator && bBalanceTeamsOnPlayerRequest || bBalanceTeamsOnAdminRequest && (Sender.PlayerReplicationInfo.bAdmin || Level.Game.AccessControl != None && Level.Game.AccessControl.IsAdmin(Sender))) && SoftRebalanceCountdown != 0 && !bBalancingRequested && IsBalancingActive()) {
 			if (RebalanceNeeded()) {
 				bBalancingRequested = True;
 				SoftRebalanceCountdown = 0;
@@ -158,7 +164,7 @@ function HandleTeamsCall(PlayerController Sender)
 				BroadcastLocalizedMessage(class'UnevenChatMessage', -4);
 			}
 		}
-		else {
+		else if (bBalanceTeamsOnPlayerRequest) {
 			Sender.ReceiveLocalizedMessage(class'UnevenChatMessage', -3);
 		}
 	}
@@ -817,6 +823,8 @@ static function FillPlayInfo(PlayInfo PlayInfo)
 	PlayInfo.AddSetting(default.FriendlyName, "bBalanceTeamsBetweenRounds", default.lblBalanceTeamsBetweenRounds, 0, 0, "Check");
 	PlayInfo.AddSetting(default.FriendlyName, "bBalanceTeamsWhilePlaying", default.lblBalanceTeamsWhilePlaying, 0, 0, "Check");
 	PlayInfo.AddSetting(default.FriendlyName, "bBalanceTeamsDuringOvertime", default.lblBalanceTeamsDuringOvertime, 0, 0, "Check");
+	PlayInfo.AddSetting(default.FriendlyName, "bBalanceTeamsOnPlayerRequest", default.lblBalanceTeamsOnPlayerRequest, 0, 0, "Check");
+	PlayInfo.AddSetting(default.FriendlyName, "bBalanceTeamsOnAdminRequest", default.lblBalanceTeamsOnAdminRequest, 0, 0, "Check");
 	PlayInfo.AddSetting(default.FriendlyName, "bDisplayRoundProgressIndicator", default.lblDisplayRoundProgressIndicator, 0, 0, "Check");
 	PlayInfo.AddSetting(default.FriendlyName, "SmallTeamProgressThreshold", default.lblSmallTeamProgressThreshold, 0, 0, "Text", "4;0.0:1.0");
 	PlayInfo.AddSetting(default.FriendlyName, "SoftRebalanceDelay", default.lblSoftRebalanceDelay, 0, 0, "Text", "3;0:999");
@@ -825,6 +833,7 @@ static function FillPlayInfo(PlayInfo PlayInfo)
 	PlayInfo.AddSetting(default.FriendlyName, "ValuablePlayerRankingPct", default.lblValuablePlayerRankingPct, 0, 0, "Text", "2;0:90");
 	PlayInfo.AddSetting(default.FriendlyName, "MinPlayerCount", default.lblMinPlayerCount, 0, 0, "Text", "2;1:32");
 	PlayInfo.AddSetting(default.FriendlyName, "TeamsCallString", default.lblTeamsCallString, 0, 0, "Text", "40");
+	PlayInfo.AddSetting(default.FriendlyName, "DeletePlayerPPHAfterDaysNotSeen", default.lblDeletePlayerPPHAfterDaysNotSeen, 0, 0, "Text", "3;1:999");
 
 	PlayInfo.PopClass();
 }
@@ -870,6 +879,10 @@ static event string GetDescriptionText(string PropName)
 		return default.descBalanceTeamsWhilePlaying;
 	case "bBalanceTeamsDuringOvertime":
 		return default.descBalanceTeamsDuringOvertime;
+	case "bBalanceTeamsOnPlayerRequest":
+		return default.descBalanceTeamsOnPlayerRequest;
+	case "bBalanceTeamsOnAdminRequest":
+		return default.descBalanceTeamsOnAdminRequest;
 	case "bDisplayRoundProgressIndicator":
 		return default.descDisplayRoundProgressIndicator;
 	case "SmallTeamProgressThreshold":
@@ -886,6 +899,8 @@ static event string GetDescriptionText(string PropName)
 		return default.descMinPlayerCount;
 	case "TeamsCallString":
 		return default.descTeamsCallString;
+	case "DeletePlayerPPHAfterDaysNotSeen":
+		return default.descDeletePlayerPPHAfterDaysNotSeen;
 	default:
 		return Super.GetDescriptionText(PropName);
 	}
@@ -914,6 +929,8 @@ defaultproperties
 	bBalanceTeamsBetweenRounds            = True
 	bBalanceTeamsWhilePlaying             = True
 	bBalanceTeamsDuringOvertime           = False
+	bBalanceTeamsOnPlayerRequest          = True
+	bBalanceTeamsOnAdminRequest           = True
 	bDisplayRoundProgressIndicator        = False
 	SmallTeamProgressThreshold            = 0.3
 	SoftRebalanceDelay                    = 10
@@ -922,6 +939,7 @@ defaultproperties
 	ValuablePlayerRankingPct              = 50
 	MinPlayerCount                        = 2
 	TeamsCallString                       = ""
+	DeletePlayerPPHAfterDaysNotSeen       = 30
 	
 	bDebug = True
 	
@@ -961,6 +979,12 @@ defaultproperties
 	lblBalanceTeamsDuringOvertime  = "Allow balance teams during overtime"
 	descBalanceTeamsDuringOvertime = "Whether to allow team balancing after overtime started. Applies to automatic and player-requested balancing."
 
+	lblBalanceTeamsOnPlayerRequest  = "Allow balance teams on player request"
+	descBalanceTeamsOnPlayerRequest = "Whether to allow players to balance teams via 'mutate teams' or the configured teams call chat text."
+
+	lblBalanceTeamsOnAdminRequest  = "Allow balance teams on admin request"
+	descBalanceTeamsOnAdminRequest = "Whether to allow admins to balance teams via 'mutate teams' or the configured teams call chat text."
+
 	lblDisplayRoundProgressIndicator  = "Display round progress indicator"
 	descDisplayRoundProgressIndicator = "Displays a HUD gauge indicating, how close to victory either team seems to be. (This isn't a team balance indicator!)"
 
@@ -977,11 +1001,14 @@ defaultproperties
 	descSwitchToWinnerProgressLimit = "Only allow players to switch teams if their new team has less than this share of the total match progress. (1.0: no limit)"
 
 	lblValuablePlayerRankingPct  = "Valuable player ranking %"
-	descValuablePlayerRankingPct = "If a player ranks among this top percentage of the team (not counting bots), he is considered too valuable to be switched during rebalancing."
+	descValuablePlayerRankingPct = "If players rank higher than percentage of the team (not counting bots), they are considered too valuable to be switched during rebalancing."
 
 	lblMinPlayerCount  = "Minimum player count"
 	descMinPlayerCount = "Minimum player count required before doing any kind of balancing."
 
 	lblTeamsCallString  = "Teams call chat text"
 	descTeamsCallString = "Players can 'say' this text in the chat to manually trigger a team balance check as alternative to the console command 'mutate teams'."
+
+	lblDeletePlayerPPHAfterDaysNotSeen  = "Delete a player's PPH after X days inactivity"
+	descDeletePlayerPPHAfterDaysNotSeen = "To keep PPH data from piling up indefinitely and affecting performance, delete PPH of players who have not been seen in this number of days."
 }
