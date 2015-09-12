@@ -32,6 +32,7 @@ var localized string CallForBalanceString;
 var localized string NoCallForBalanceNowString;
 var localized string NoCallForBalanceEvenString;
 var localized string YouWereSwitchedString;
+var localized string PlayerWasSwitchedString;
 
 
 //=============================================================================
@@ -58,6 +59,8 @@ static function ClientReceive(PlayerController P, optional int MessageSwitch, op
 static function string GetString(optional int MessageSwitch, optional PlayerReplicationInfo RelatedPRI_1, optional PlayerReplicationInfo RelatedPRI_2, optional Object OptionalObject)
 {
 	switch (MessageSwitch) {
+	case -6:
+		return Repl(Repl(default.PlayerWasSwitchedString, "%t", TeamInfo(OptionalObject).GetHumanReadableName()), "%p", RelatedPRI_1.PlayerName);
 	case -5:
 		return default.YouWereSwitchedString;
 	case -4:
@@ -92,7 +95,7 @@ static function string GetString(optional int MessageSwitch, optional PlayerRepl
 defaultproperties
 {
 	QuickRoundBalanceString = "Quick round, restarting with balanced teams"
-	PrevMatchBalanceString  = "Teams have been balanced based on last match results"
+	PrevMatchBalanceString  = "Teams have been balanced based on player skill estimation"
 	FirstRoundWinnerString  = "%t won the first round"
 	SoftBalanceString       = "Teams are uneven, respawning players may switch to balance"
 	TeamsUnbalancedString   = "Teams are uneven, balance will be forced in %n seconds"
@@ -101,6 +104,7 @@ defaultproperties
 	NoCallForBalanceNowString  = "You can't request a team balance check at this time."
 	NoCallForBalanceEvenString = "Teams look even already, no apparent need for balancing."
 	YouWereSwitchedString   = "Forced team change by EvenMatch"
+	PlayerWasSwitchedString = "%p was switched to %t by EvenMatch"
 
 	QuickRoundAnnouncement(0) = red_team_dominating
 	QuickRoundAnnouncement(1) = blue_team_dominating

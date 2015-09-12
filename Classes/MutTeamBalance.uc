@@ -334,8 +334,13 @@ function RememberForcedSwitch(PlayerController PC, string Reason)
 {
 	local int i, Low, High, Middle;
 	local TRecentTeam Entry;
+	local Controller C;
 
 	log("Forced team change: " $ PC.GetHumanReadableName() @ PC.PlayerReplicationInfo.Team.GetHumanReadableName() @ Reason, 'EvenMatch');
+	for (C = Level.ControllerList; C != None; C = C.NextController) {
+		if (PlayerController(C) != None && C != PC)
+			PlayerController(C).ReceiveLocalizedMessage(class'UnevenChatMessage', -6, PC.PlayerReplicationInfo,, PC.PlayerReplicationInfo.Team);
+	}
 	PC.ReceiveLocalizedMessage(class'UnevenMessage', -5);
 
 	// find entry
@@ -953,7 +958,7 @@ defaultproperties
 	descMinDesiredFirstRoundDuration = "If the first round is shorter than this number of minutes, scores are reset and the round is restarted with shuffled teams."
 
 	lblShuffleTeamsAtMatchStart  = "Shuffle teams at match start"
-	descShuffleTeamsAtMatchStart = "Initially assign players to teams based on PPH from the previous match to achieve even teams."
+	descShuffleTeamsAtMatchStart = "Initially assign players to teams based on PPH from the previous matches to achieve even teams."
 
 	lblRandomlyStartWithSidesSwapped  = "Randomly start with sides swapped"
 	descRandomlyStartWithSidesSwapped = "Initially swap team bases randomly in 50% of matches."
@@ -995,7 +1000,7 @@ defaultproperties
 	descSoftRebalanceDelay = "If teams stay unbalanced longer than this this, respawning players are switched to achieve rebalance."
 
 	lblForcedRebalanceDelay  = "Forced rebalance delay"
-	descForcedRebalanceDelay = "If teams stay unbalanced longer than this this, alive players are switched to achieve rebalance."
+	descForcedRebalanceDelay = "If soft balancing is unsuccessful for longer than this this, alive players are switched to achieve rebalance."
 
 	lblSwitchToWinnerProgressLimit  = "Switch to winner progress limit"
 	descSwitchToWinnerProgressLimit = "Only allow players to switch teams if their new team has less than this share of the total match progress. (1.0: no limit)"

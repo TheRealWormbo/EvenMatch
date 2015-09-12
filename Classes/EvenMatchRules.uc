@@ -355,10 +355,10 @@ function ShuffleTeams()
 		}
 	
 		while (Index > 1) {
-			PRI = PRIs[Index];
-			PPH = PPHs[--Index];
-			PRI2 = PRIs[Index];
-			PPH2 = PPHs[--Index];
+			PRI = PRIs[--Index];
+			PPH = PPHs[Index];
+			PRI2 = PRIs[--Index];
+			PPH2 = PPHs[Index];
 			// ascending sort, so PPH >= PPH2
 			
 			if (EvenMatchMutator.bDebug)
@@ -457,7 +457,7 @@ function float GetPointsPerHour(PlayerReplicationInfo PRI)
 			High = Middle;
 	} until (Low >= High);
 	
-	if (PRI.Score > 0 && Level.GRI.ElapsedTime - PRI.StartTime > 30) {
+	if (Level.GRI.bMatchHasBegun && PRI.Score > 0 && Level.GRI.ElapsedTime - PRI.StartTime > 30) {
 		// already scored, override score from earlier
 		if (Low >= Recent.PPH.Length || Recent.PPH[Low].ID != ID) {
 			Recent.PPH.Insert(Low, 1);
