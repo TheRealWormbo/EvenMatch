@@ -25,6 +25,8 @@ class TeamSwitchNotification extends CriticalEventPlus;
 
 #exec audio import file=Sounds\YouAreOnRed.wav
 #exec audio import file=Sounds\YouAreOnBlue.wav
+#exec audio import file=Sounds\YouAreOnRed2.wav
+#exec audio import file=Sounds\YouAreOnBlue2.wav
 
 
 //=============================================================================
@@ -38,15 +40,18 @@ var localized string YouAreOnTeam;
 // Announcements
 //=============================================================================
 
-var Sound TeamChangeAnnouncement[2];
+var Sound TeamChangeAnnouncement[4];
 
 
 static function ClientReceive(PlayerController P, optional int MessageSwitch, optional PlayerReplicationInfo RelatedPRI_1, optional PlayerReplicationInfo RelatedPRI_2, optional Object OptionalObject)
 {
 	Super.ClientReceive(P, MessageSwitch, RelatedPRI_1, RelatedPRI_2, OptionalObject);
 
-	if (UnrealPlayer(P) != None)
+	if (UnrealPlayer(P) != None) {
+		if (Rand(MaxInt) == 0 || P.Level.Month == 4 && P.Level.Day == 1 && Rand(10) == 0)
+			MessageSwitch += 2; // *waves hand* these are not the droids you're looking for
 		UnrealPlayer(P).ClientDelayedAnnouncement(default.TeamChangeAnnouncement[MessageSwitch], 5 + 10 * int(OptionalObject != None));
+	}
 }
 
 static function string GetString(optional int MessageSwitch, optional PlayerReplicationInfo RelatedPRI_1, optional PlayerReplicationInfo RelatedPRI_2, optional Object OptionalObject)
@@ -79,6 +84,8 @@ defaultproperties
 	
 	TeamChangeAnnouncement(0) = Sound'YouAreOnRed'
 	TeamChangeAnnouncement(1) = Sound'YouAreOnBlue'
+	TeamChangeAnnouncement(2) = Sound'YouAreOnRed2'
+	TeamChangeAnnouncement(3) = Sound'YouAreOnBlue2'
 	
 	bIsConsoleMessage = False
 	Lifetime  = 3
