@@ -143,9 +143,19 @@ function MatchStarting()
 
 function Mutate(string MutateString, PlayerController Sender)
 {
-	if (MutateString ~= "teams") {
-		HandleTeamsCall(Sender);
-		return;
+	local string SetPlayerIdPrefix;
+	
+	if (Sender != None) {
+		if (MutateString ~= "teams") {
+			HandleTeamsCall(Sender);
+			return;
+		}
+		
+		SetPlayerIdPrefix = "EvenMatch SetPlayerId " $ Rules.MatchStartTS $ " ";
+		if (Left(MutateString, Len(SetPlayerIdPrefix)) == SetPlayerIdPrefix) {
+			Rules.ReceivedReplacementStatsId(Sender, Mid(MutateString, Len(SetPlayerIdPrefix)));
+			return;
+		}
 	}
 	
 	Super.Mutate(MutateString, Sender);

@@ -25,6 +25,7 @@ struct TPlayerPPH {
 	var config int TS;
 };
 
+var config string MyReplacementStatsID;
 var config array<TPlayerPPH> PPH;
 
 

@@ -36,6 +36,13 @@ var PlayerController LastRestarter, PotentiallyLeavingPlayer;
 var array<string> CachedPlayerIDs;
 
 
+replication
+{
+	reliable if (bNetInitial)
+		MatchStartTS;
+}
+
+
 function SaveRecentPPH()
 {
 	if (bSaveNeeded) {
@@ -54,6 +61,9 @@ function PreBeginPlay()
 	local int i, Diff;
 	
 	EvenMatchMutator = MutTeamBalance(Owner);
+	
+	if (!Level.Game.bEnableStatLogging || !Level.Game.bLoggingGame)
+		RemoteRole = ROLE_SimulatedProxy;
 
 	// remove obsolete entries
 	MatchStartTS = GetTS();
@@ -88,6 +98,35 @@ function PreBeginPlay()
 	SaveRecentPPH();
 }
 
+simulated function PostNetBeginPlay()
+{
+	local PlayerController PC;
+	
+	if (Level.NetMode == NM_Client)
+	{
+		PC = Level.GetLocalPlayerController();
+		if (PC == None)
+			return;
+		
+		// we're here because the server doesn't know the player's stats identifier
+		if (PC.StatsUsername != "" && PC.StatsPassword != "") {
+			// player configured a stats name and password, use that,
+			// as it will be the same when the server enables stats at some point
+			PC.Mutate("EvenMatch SetPlayerId " $ MatchStartTS @ class'SHA1Hash'.static.GetStringHashString(Super(GameStats).GetStatsIdentifier(PC)));
+		}
+		else {
+			// player hasn't configured stats, use a replacement ID,
+			// which will be persisted until the player decides to configure stats
+			Recent = new(None, "EvenMatchPPHDatabase") class'EvenMatchPPH';
+			if (Recent.MyReplacementStatsID == "") {
+				// no persisted replacement ID available, create a reasonably unique one
+				Recent.MyReplacementStatsID = "NoStats-"$class'SHA1Hash'.static.GetStringHashString(PC.GetPlayerIDHash() @ Level.Year @ Level.Month @ Level.Day @ Level.Hour @ Level.Minute @ Level.Second @ Level.Millisecond @ Rand(MaxInt));
+				Recent.SaveConfig();
+			}
+			PC.Mutate("EvenMatch SetPlayerId " $ MatchStartTS @ Recent.MyReplacementStatsID);
+		}
+	}
+}
 
 function AddGameRules(GameRules GR)
 {
@@ -425,6 +464,14 @@ function int FindPPHSlot(array<PlayerReplicationInfo> PRIs, float PPH)
 	return Low;
 }
 
+function ReceivedReplacementStatsId(PlayerController PC, string ReplacementID)
+{
+	if (!Level.Game.bEnableStatLogging || !Level.Game.bLoggingGame) {
+		if (PC.PlayerReplicationInfo != None && (CachedPlayerIDs.Length <= PC.PlayerReplicationInfo.PlayerID || CachedPlayerIDs[PC.PlayerReplicationInfo.PlayerID] == "")) {
+			CachedPlayerIDs[PC.PlayerReplicationInfo.PlayerID] = ReplacementID;
+		}
+	}
+}
 
 function float GetPointsPerHour(PlayerReplicationInfo PRI)
 {
@@ -505,4 +552,5 @@ function ChangeTeam(PlayerController Player, int NewTeam)
 
 defaultproperties
 {
+	bNetTemporary = True;
 }
