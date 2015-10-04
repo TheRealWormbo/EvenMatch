@@ -88,6 +88,8 @@ var array<TRecentTeam> RecentTeams;
 
 var Scoreboard PlayerSorter;
 
+var array<PlayerController> PendingVoiceChatRoomChecks;
+
 
 function PostBeginPlay()
 {
@@ -352,6 +354,8 @@ function RememberForcedSwitch(PlayerController PC, string Reason)
 			PlayerController(C).ReceiveLocalizedMessage(class'UnevenChatMessage', -6, PC.PlayerReplicationInfo,, PC.PlayerReplicationInfo.Team);
 	}
 	PC.ReceiveLocalizedMessage(class'UnevenMessage', -5);
+	
+	PendingVoiceChatRoomChecks[PendingVoiceChatRoomChecks.Length] = PC;
 
 	// find entry
 	for (i = 0; i < RecentTeams.Length && RecentTeams[i].PC != PC; ++i);
@@ -401,6 +405,9 @@ Check for soft or forced team rebalancing.
 */
 function Timer()
 {
+	if (PendingVoiceChatRoomChecks.Length > 0)
+		PerformVoiceChatRoomChecks();
+	
 	if (SoftRebalanceCountdown > 0)
 		SoftRebalanceCountdown--;
 
@@ -413,6 +420,41 @@ function Timer()
 		ForcedBalanceAttempt = 0;
 	
 	bBalancingRequested = False;
+}
+
+
+/**
+Look for any players that - for whatever reason - are speaking on the wrong team voice chat room.
+*/
+function PerformVoiceChatRoomChecks()
+{
+	local int i;
+	local PlayerController PC;
+	local VoiceChatReplicationInfo VoiceReplicationInfo;
+	local VoiceChatRoom NewRoom;
+	
+	VoiceReplicationInfo = Level.Game.VoiceReplicationInfo;
+	
+	for (i = 0; i < PendingVoiceChatRoomChecks.Length; i++) {
+		PC = PendingVoiceChatRoomChecks[i];
+		if (PC == None || PC.ActiveRoom == None || !PC.ActiveRoom.IsTeamChannel() || PC.ActiveRoom.GetTeam() == PC.GetTeamNum())
+			continue;
+		
+		NewRoom = VoiceReplicationInfo.GetChannel("team", PC.GetTeamNum());
+		
+		if (PC.ActiveRoom == NewRoom)
+			continue;
+		
+		log("Moving " $ PC.GetHumanReadableName() $ " from voice chat room " $ PC.ActiveRoom.GetTitle() $ " (team " $ PC.ActiveRoom.GetTeam() $ ") to " $ NewRoom.GetTitle() $ " (team " $ NewRoom.GetTeam() $ ")", 'EvenMatch');
+		
+		if (PC.ActiveRoom.IsPrivateChannel() && PC.ChatRoomMessageClass != None)
+			PC.ClientMessage(PC.ChatRoomMessageClass.static.AssembleMessage(9, NewRoom.GetTitle()));
+		
+		PC.ActiveRoom = NewRoom;
+		PC.ClientSetActiveRoom(NewRoom.ChannelIndex);
+	}
+	
+	PendingVoiceChatRoomChecks.Length = 0;
 }
 
 

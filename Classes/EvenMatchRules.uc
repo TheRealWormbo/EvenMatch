@@ -543,6 +543,8 @@ function ChangeTeam(PlayerController Player, int NewTeam)
 		Player.ReceiveLocalizedMessage(class'TeamSwitchNotification', NewTeam);
 		ONSOnslaughtGame(Level.Game).GameEvent("TeamChange", string(NewTeam), Player.PlayerReplicationInfo);
 	}
+	
+	EvenMatchMutator.PendingVoiceChatRoomChecks[EvenMatchMutator.PendingVoiceChatRoomChecks.Length] = Player;
 }
 
 
