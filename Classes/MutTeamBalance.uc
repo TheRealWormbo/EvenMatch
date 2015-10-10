@@ -40,6 +40,7 @@ var config int SoftRebalanceDelay;
 var config int ForcedRebalanceDelay;
 var config float SwitchToWinnerProgressLimit;
 var config byte ValuablePlayerRankingPct;
+var config int RecentBalancingPlayerTime;
 var config byte MinPlayerCount;
 var config string TeamsCallString;
 var config int DeletePlayerPPHAfterDaysNotSeen;
@@ -65,6 +66,7 @@ var localized string lblSoftRebalanceDelay, descSoftRebalanceDelay;
 var localized string lblForcedRebalanceDelay, descForcedRebalanceDelay;
 var localized string lblSwitchToWinnerProgressLimit, descSwitchToWinnerProgressLimit;
 var localized string lblValuablePlayerRankingPct, descValuablePlayerRankingPct;
+var localized string lblRecentBalancingPlayerTime, descRecentBalancingPlayerTime;
 var localized string lblMinPlayerCount, descMinPlayerCount;
 var localized string lblTeamsCallString, descTeamsCallString;
 var localized string lblDeletePlayerPPHAfterDaysNotSeen, descDeletePlayerPPHAfterDaysNotSeen;
@@ -570,15 +572,16 @@ function ActuallyCheckBalance(PlayerController Player, bool bIsLeaving)
 			if (Candidates.Length == 0 && RebalanceStillNeeded(SizeOffset, Progress, BiggerTeam)) {
 				// try to find other candidates currently waiting to respawn
 				if (bDebug) log(Level.TimeSeconds $ " Not enough soft balancing candidates", 'EvenMatchDebug');
-				for (C = Level.ControllerList; C != None; C = C.NextController) {
-					if ((!bIsLeaving || C != Player) && PlayerController(C) != None && C.Pawn == None && C.GetTeamNum() == BiggerTeam && !IsRecentBalancer(C)) {
+				for (i = Level.GRI.PRIArray.Length - 1; i>= 0; i--) {
+					C = Controller(Level.GRI.PRIArray[i].Owner);
+					if (C != None && (!bIsLeaving || C != Player) && PlayerController(C) != None && C.Pawn == None && C.GetTeamNum() == BiggerTeam && !IsRecentBalancer(C)) {
 						Candidates[Candidates.Length] = PlayerController(C);
 						if (bDebug) log(Level.TimeSeconds $ " Additional soft balancing candidate: " $ C.GetHumanReadableName(), 'EvenMatchDebug');
 					}
 				}
 				while (Candidates.Length > 0 && RebalanceStillNeeded(SizeOffset, Progress, BiggerTeam)) {
-					// try switching a random candidate to the smaller team
-					i = Rand(Candidates.Length);
+					// try switching a not so random candidate to the smaller team
+					i = 0; //Rand(Candidates.Length);
 					if (!IsValuablePlayer(Candidates[i])) {
 						Game.ChangeTeam(Candidates[i], 1 - BiggerTeam, true);
 						RememberForcedSwitch(Candidates[i], "soft-balance at respawn");
@@ -597,15 +600,16 @@ function ActuallyCheckBalance(PlayerController Player, bool bIsLeaving)
 
 				if (ForcedRebalanceCountdown == 0) {
 					// time is up, random alive players on the bigger team will be switched to the smaller team
-					for (C = Level.ControllerList; C != None; C = C.NextController) {
-						if ((!bIsLeaving || C != Player) && PlayerController(C) != None && C.GetTeamNum() == BiggerTeam && !IsKeyPlayer(C)) {
+					for (i = Level.GRI.PRIArray.Length - 1; i>= 0; i--) {
+						C = Controller(Level.GRI.PRIArray[i].Owner);
+						if (C != None && (!bIsLeaving || C != Player) && PlayerController(C) != None && C.GetTeamNum() == BiggerTeam && !IsKeyPlayer(C)) {
 							Candidates[Candidates.Length] = PlayerController(C);
 							if (bDebug) log(Level.TimeSeconds $ " Forced balancing candidate: " $ C.GetHumanReadableName(), 'EvenMatchDebug');
 						}
 					}
 					while (Candidates.Length > 0 && RebalanceStillNeeded(SizeOffset, Progress, BiggerTeam)) {
-						// try switching a random candidate to the smaller team
-						i = Rand(Candidates.Length);
+						// try switching a not so random candidate to the smaller team
+						i = 0; //Rand(Candidates.Length);
 						Game.ChangeTeam(Candidates[i], 1 - BiggerTeam, true);
 						RememberForcedSwitch(Candidates[i], "forced balance");
 						if (Candidates[i].Pawn != None) {
@@ -660,8 +664,6 @@ function bool IsValuablePlayer(Controller C)
 	if (C.PlayerReplicationInfo == None)
 		return false;
 
-	// if successive attempts fail, consider more players
-	rank = -ForcedBalanceAttempt;
 	for (i = 0; i < Level.GRI.PRIArray.Length; i++) {
 		if (Level.GRI.PRIArray[i].Team == C.PlayerReplicationInfo.Team) {
 			if (!bFound && !Level.GRI.PRIArray[i].bBot)
@@ -775,14 +777,10 @@ function bool IsRecentBalancer(Controller C)
 {
 	local int i;
 
-	i = (RecentTeams.Length + 2) / 3;
-	if (i > 0) {
-		do {} until (--i < 0 || RecentTeams[i].PC == C);
-	}
-	else {
-		i--;
-	}
-	return i >= 0 && RecentTeams[i].LastForcedSwitch > 0 && Level.TimeSeconds - RecentTeams[i].LastForcedSwitch < 60 && RecentTeams[i].ForcedTeamNum == C.GetTeamNum();
+	i = RecentTeams.Length;
+	do {} until (--i < 0 || RecentTeams[i].PC == C);
+	
+	return i >= 0 && RecentTeams[i].LastForcedSwitch > 0 && Level.TimeSeconds - RecentTeams[i].LastForcedSwitch < RecentBalancingPlayerTime && RecentTeams[i].ForcedTeamNum == C.GetTeamNum();
 }
 
 function bool IsKeyPlayer(Controller C)
@@ -994,6 +992,7 @@ defaultproperties
 	ForcedRebalanceDelay                  = 30
 	SwitchToWinnerProgressLimit           = 0.6
 	ValuablePlayerRankingPct              = 50
+	RecentBalancingPlayerTime             = 120
 	MinPlayerCount                        = 2
 	TeamsCallString                       = ""
 	DeletePlayerPPHAfterDaysNotSeen       = 30
@@ -1059,6 +1058,9 @@ defaultproperties
 
 	lblValuablePlayerRankingPct  = "Valuable player ranking %"
 	descValuablePlayerRankingPct = "If players rank higher than percentage of the team (not counting bots), they are considered too valuable to be switched during rebalancing."
+	
+	lblRecentBalancingPlayerTime  = "Recent balancing player time"
+	descRecentBalancingPlayerTime = "A player who was assigned to a new team by the balancer will be considered a 'recent balancer' for this number of seconds."
 
 	lblMinPlayerCount  = "Minimum player count"
 	descMinPlayerCount = "Minimum player count required before doing any kind of balancing."
