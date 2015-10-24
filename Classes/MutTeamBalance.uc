@@ -41,6 +41,7 @@ var config int ForcedRebalanceDelay;
 var config float SwitchToWinnerProgressLimit;
 var config byte ValuablePlayerRankingPct;
 var config int RecentBalancingPlayerTime;
+var config int UndoSwitchCheckTime;
 var config byte MinPlayerCount;
 var config string TeamsCallString;
 var config int DeletePlayerPPHAfterDaysNotSeen;
@@ -67,6 +68,7 @@ var localized string lblForcedRebalanceDelay, descForcedRebalanceDelay;
 var localized string lblSwitchToWinnerProgressLimit, descSwitchToWinnerProgressLimit;
 var localized string lblValuablePlayerRankingPct, descValuablePlayerRankingPct;
 var localized string lblRecentBalancingPlayerTime, descRecentBalancingPlayerTime;
+var localized string lblUndoSwitchCheckTime, descUndoSwitchCheckTime;
 var localized string lblMinPlayerCount, descMinPlayerCount;
 var localized string lblTeamsCallString, descTeamsCallString;
 var localized string lblDeletePlayerPPHAfterDaysNotSeen, descDeletePlayerPPHAfterDaysNotSeen;
@@ -643,7 +645,7 @@ function ActuallyCheckBalance(PlayerController Player, bool bIsLeaving)
 			while (Candidates.Length > 0) {
 				i = Rand(Candidates.Length);
 				SizeOffset = 4 * Candidates[i].GetTeamNum() - 2; // red -2, blue +2
-				if (!IsRecentBalancer(Candidates[i]) && Abs(1 - Candidates[i].GetTeamNum() - Progress) > SwitchToWinnerProgressLimit && !RebalanceStillNeeded(SizeOffset, Progress, BiggerTeam)) {
+				if ((IsRecentUnbalancer(Candidates[i]) || !IsRecentBalancer(Candidates[i]) && Abs(1 - Candidates[i].GetTeamNum() - Progress) > SwitchToWinnerProgressLimit) && !RebalanceStillNeeded(SizeOffset, Progress, BiggerTeam)) {
 					// try switching the team changer back to his previous team
 					Game.ChangeTeam(Candidates[i], 1 - Candidates[i].GetTeamNum(), true);
 					RememberForcedSwitch(Candidates[i], "undoing switch to winning team");
@@ -783,6 +785,16 @@ function bool IsRecentBalancer(Controller C)
 	return i >= 0 && RecentTeams[i].LastForcedSwitch > 0 && Level.TimeSeconds - RecentTeams[i].LastForcedSwitch < RecentBalancingPlayerTime && RecentTeams[i].ForcedTeamNum == C.GetTeamNum();
 }
 
+function bool IsRecentUnbalancer(Controller C)
+{
+	local int i;
+
+	i = RecentTeams.Length;
+	do {} until (--i < 0 || RecentTeams[i].PC == C);
+	
+	return i >= 0 && RecentTeams[i].LastForcedSwitch > 0 && Level.TimeSeconds - RecentTeams[i].LastForcedSwitch < UndoSwitchCheckTime && RecentTeams[i].ForcedTeamNum != C.GetTeamNum();
+}
+
 function bool IsKeyPlayer(Controller C)
 {
 	local Pawn P;
@@ -886,6 +898,8 @@ static function FillPlayInfo(PlayInfo PlayInfo)
 	PlayInfo.AddSetting(default.FriendlyName, "ForcedRebalanceDelay", default.lblForcedRebalanceDelay, 0, 0, "Text", "3;0:999");
 	PlayInfo.AddSetting(default.FriendlyName, "SwitchToWinnerProgressLimit", default.lblSwitchToWinnerProgressLimit, 0, 0, "Text", "4;0.0:1.0");
 	PlayInfo.AddSetting(default.FriendlyName, "ValuablePlayerRankingPct", default.lblValuablePlayerRankingPct, 0, 0, "Text", "2;0:90");
+	PlayInfo.AddSetting(default.FriendlyName, "RecentBalancingPlayerTime", default.lblRecentBalancingPlayerTime, 0, 0, "Text", "3;0:999");
+	PlayInfo.AddSetting(default.FriendlyName, "UndoSwitchCheckTime", default.lblUndoSwitchCheckTime, 0, 0, "Text", "2;0:999");
 	PlayInfo.AddSetting(default.FriendlyName, "MinPlayerCount", default.lblMinPlayerCount, 0, 0, "Text", "2;1:32");
 	PlayInfo.AddSetting(default.FriendlyName, "TeamsCallString", default.lblTeamsCallString, 0, 0, "Text", "40");
 	PlayInfo.AddSetting(default.FriendlyName, "DeletePlayerPPHAfterDaysNotSeen", default.lblDeletePlayerPPHAfterDaysNotSeen, 0, 0, "Text", "3;1:999");
@@ -950,6 +964,10 @@ static event string GetDescriptionText(string PropName)
 		return default.descSwitchToWinnerProgressLimit;
 	case "ValuablePlayerRankingPct":
 		return default.descValuablePlayerRankingPct;
+	case "RecentBalancingPlayerTime":
+		return default.descRecentBalancingPlayerTime;
+	case "UndoSwitchCheckTime":
+		return default.descUndoSwitchCheckTime;
 	case "MinPlayerCount":
 		return default.descMinPlayerCount;
 	case "TeamsCallString":
@@ -993,6 +1011,7 @@ defaultproperties
 	SwitchToWinnerProgressLimit           = 0.6
 	ValuablePlayerRankingPct              = 50
 	RecentBalancingPlayerTime             = 120
+	UndoSwitchCheckTime                   = 30
 	MinPlayerCount                        = 2
 	TeamsCallString                       = ""
 	DeletePlayerPPHAfterDaysNotSeen       = 30
@@ -1061,6 +1080,9 @@ defaultproperties
 	
 	lblRecentBalancingPlayerTime  = "Recent balancing player time"
 	descRecentBalancingPlayerTime = "A player who was assigned to a new team by the balancer will be considered a 'recent balancer' for this number of seconds."
+	
+	lblUndoSwitchCheckTime  = "Undo switch check time"
+	descUndoSwitchCheckTime = "A player will usually not be allowed to undo a forced team switch by EvenMatch for this number of seconds."
 
 	lblMinPlayerCount  = "Minimum player count"
 	descMinPlayerCount = "Minimum player count required before doing any kind of balancing."

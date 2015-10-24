@@ -34,6 +34,7 @@ INI setting | Name in webadmin | Default value | Description
 `SwitchToWinnerProgressLimit` | Switch to winner progress limit | 0.6 | Only allow players to switch teams if their new team has less than this share of the total match progress. (1.0: no limit)
 `ValuablePlayerRankingPct` | Valuable player ranking % | 50 | If players rank higher than percentage of the team (not counting bots), they are considered too valuable to be switched during rebalancing.
 `RecentBalancingPlayerTime` | Recent balancing player time | 120 | A player who was assigned to a new team by the balancer will be considered a 'recent balancer' for this number of seconds.
+`UndoSwitchCheckTime` | Undo switch check time | 30 | A player will usually not be allowed to undo a forced team switch by EvenMatch for this number of seconds.
 `MinPlayerCount` | Minimum player count | 2 | Minimum player count required before doing any kind of balancing.
 `TeamsCallString` | Teams call chat text | *(empty)* | Players can 'say' this text in the chat to manually trigger a team balance check as alternative to the console command 'mutate teams'.
 `DeletePlayerPPHAfterDaysNotSeen` | Delete a player's PPH after X days inactivity | 30 | To keep PPH data from piling up indefinitely and affecting performance, delete PPH of players who have not been seen in this number of days.
