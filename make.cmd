@@ -140,6 +140,14 @@ IF NOT EXIST "%OutputFile%" (
 	ECHO Compressing package for redirect...
 	UCC Compress %OutputFile%
 	ECHO.
+	ECHO Generating localization files...
+	XCOPY "%BuildFolder%\System\%ProjectName%.*" ".\%ProjectName%%ProjectVersion%.*" /Y
+	UCC DumpInt %OutputFile%
+	XCOPY ".\%ProjectName%%ProjectVersion%.int" "%ProjectFolder%\System\%ProjectName%.int" /Y
+	ECHO.
+	ECHO Packing files...
+	%ProjectFolder%Build\7za a -mx=9 -r- -x!*.backup -x!*.zip %ProjectName%%ProjectVersion%.zip %ProjectName%%ProjectVersion%.*
+	ECHO.
 	ECHO Build complete.
 )
 
