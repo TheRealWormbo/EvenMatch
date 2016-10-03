@@ -1,7 +1,7 @@
 [DamTypeTeamChange]
-DeathString="%o was forced to switch teams."
-FemaleSuicide="%o was forced to switch teams."
-MaleSuicide="%o was forced to switch teams."
+DeathString="%o was forced to auto-switch teams."
+FemaleSuicide="%o was forced to auto-switch teams."
+MaleSuicide="%o was forced to auto-switch teams."
 
 [MutTeamBalance]
 lblActivationDelay="Activation delay"
@@ -51,7 +51,11 @@ descMinPlayerCount="Minimum player count required before doing any kind of balan
 lblTeamsCallString="Teams call chat text"
 descTeamsCallString="Players can 'say' this text in the chat to manually trigger a team balance check as alternative to the console command 'mutate teams'."
 lblDeletePlayerPPHAfterDaysNotSeen="Delete a player's PPH after X days inactivity"
-descDeletePlayerPPHAfterDaysNotSeen="To keep PPH data from piling up indefinitely and affecting performance, delete PPH of players who have not been seen in this number of days."
+descDeletePlayerPPHAfterDaysNotSeen="To keep PPH data from piling up indefinitely, delete PPH of players who have not been seen in this number of days."
+lblPlayerGameSecondsBeforeStoringPPH="Player in-game seconds before storing PPH"
+descPlayerGameSecondsBeforeStoringPPH="A player must have accummulated at least this number of seconds play time in the current match before his or her PPH will be considered meaningful enough to store in the database."
+lblPlayerMinScoreBeforeStoringPPH="Player minimum score before storing PPH"
+descPlayerMinScoreBeforeStoringPPH="A player must have scored at least this many points in the current match before his or her PPH will be considered meaningful enough to store in the database."
 FriendlyName="Team Balance (Onslaught-only)"
 Description="Special team balancing rules for public Onslaught matches."
 

@@ -25,8 +25,26 @@ struct TPlayerPPH {
 	var config int TS;
 };
 
-var config string MyReplacementStatsID;
+var config array<string> MyReplacementStatsID;
 var config array<TPlayerPPH> PPH;
+
+
+
+function int FindPPHSlot(string ID)
+{
+	local int High, Low, Middle;
+
+	High = PPH.Length;
+	if (Low < High) do {
+		Middle = (High + Low) / 2;
+		if (PPH[Middle].ID < ID)
+			Low = Middle + 1;
+		else
+			High = Middle;
+	} until (Low >= High);
+	
+	return Low;
+}
 
 
 //=============================================================================

@@ -2,7 +2,7 @@
 This damage type is used to kill players who are being switching to another
 team, so everyone can see what's going on.
 
-Copyright (c) 2015, Wormbo
+Copyright (c) 2015-2016, Wormbo
 
 (1) This source code and any binaries compiled from it are provided "as-is",
 without warranty of any kind. (In other words, if it breaks something for you,
@@ -26,7 +26,7 @@ class DamTypeTeamChange extends Suicided abstract;
 
 defaultproperties
 {
-	DeathString="%o was forced to switch teams."
-	MaleSuicide="%o was forced to switch teams."
-	FemaleSuicide="%o was forced to switch teams."
+	DeathString="%o was forced to auto-switch teams."
+	MaleSuicide="%o was forced to auto-switch teams."
+	FemaleSuicide="%o was forced to auto-switch teams."
 }

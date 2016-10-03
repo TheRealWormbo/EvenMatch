@@ -45,6 +45,8 @@ var config int UndoSwitchCheckTime;
 var config byte MinPlayerCount;
 var config string TeamsCallString;
 var config int DeletePlayerPPHAfterDaysNotSeen;
+var config int PlayerGameSecondsBeforeStoringPPH;
+var config int PlayerMinScoreBeforeStoringPPH;
 
 var config bool bDebug;
 
@@ -72,6 +74,8 @@ var localized string lblUndoSwitchCheckTime, descUndoSwitchCheckTime;
 var localized string lblMinPlayerCount, descMinPlayerCount;
 var localized string lblTeamsCallString, descTeamsCallString;
 var localized string lblDeletePlayerPPHAfterDaysNotSeen, descDeletePlayerPPHAfterDaysNotSeen;
+var localized string lblPlayerGameSecondsBeforeStoringPPH, descPlayerGameSecondsBeforeStoringPPH;
+var localized string lblPlayerMinScoreBeforeStoringPPH, descPlayerMinScoreBeforeStoringPPH;
 
 
 var ONSOnslaughtGame Game;
@@ -409,6 +413,8 @@ Check for soft or forced team rebalancing.
 */
 function Timer()
 {
+	Rules.SaveRecentPPH();
+
 	if (PendingVoiceChatRoomChecks.Length > 0)
 		PerformVoiceChatRoomChecks();
 	
@@ -903,6 +909,8 @@ static function FillPlayInfo(PlayInfo PlayInfo)
 	PlayInfo.AddSetting(default.FriendlyName, "MinPlayerCount", default.lblMinPlayerCount, 0, 0, "Text", "2;1:32");
 	PlayInfo.AddSetting(default.FriendlyName, "TeamsCallString", default.lblTeamsCallString, 0, 0, "Text", "40");
 	PlayInfo.AddSetting(default.FriendlyName, "DeletePlayerPPHAfterDaysNotSeen", default.lblDeletePlayerPPHAfterDaysNotSeen, 0, 0, "Text", "3;1:999");
+	PlayInfo.AddSetting(default.FriendlyName, "PlayerGameSecondsBeforeStoringPPH", default.lblPlayerGameSecondsBeforeStoringPPH, 0, 0, "Text", "3;10:999");
+	PlayInfo.AddSetting(default.FriendlyName, "PlayerMinScoreBeforeStoringPPH", default.lblPlayerMinScoreBeforeStoringPPH, 0, 0, "Text", "2;0:99");
 
 	PlayInfo.PopClass();
 }
@@ -974,6 +982,10 @@ static event string GetDescriptionText(string PropName)
 		return default.descTeamsCallString;
 	case "DeletePlayerPPHAfterDaysNotSeen":
 		return default.descDeletePlayerPPHAfterDaysNotSeen;
+	case "PlayerGameSecondsBeforeStoringPPH":
+		return default.descPlayerGameSecondsBeforeStoringPPH;
+	case "PlayerMinScoreBeforeStoringPPH":
+		return default.descPlayerMinScoreBeforeStoringPPH;
 	default:
 		return Super.GetDescriptionText(PropName);
 	}
@@ -1015,6 +1027,8 @@ defaultproperties
 	MinPlayerCount                        = 2
 	TeamsCallString                       = ""
 	DeletePlayerPPHAfterDaysNotSeen       = 30
+	PlayerGameSecondsBeforeStoringPPH     = 60
+	PlayerMinScoreBeforeStoringPPH        = 10
 	
 	bDebug = True
 	
@@ -1091,5 +1105,11 @@ defaultproperties
 	descTeamsCallString = "Players can 'say' this text in the chat to manually trigger a team balance check as alternative to the console command 'mutate teams'."
 
 	lblDeletePlayerPPHAfterDaysNotSeen  = "Delete a player's PPH after X days inactivity"
-	descDeletePlayerPPHAfterDaysNotSeen = "To keep PPH data from piling up indefinitely and affecting performance, delete PPH of players who have not been seen in this number of days."
+	descDeletePlayerPPHAfterDaysNotSeen = "To keep PPH data from piling up indefinitely, delete PPH of players who have not been seen in this number of days."
+
+	lblPlayerGameSecondsBeforeStoringPPH  = "Player in-game seconds before storing PPH"
+	descPlayerGameSecondsBeforeStoringPPH = "A player must have accummulated at least this number of seconds play time in the current match before his or her PPH will be considered meaningful enough to store in the database."
+
+	lblPlayerMinScoreBeforeStoringPPH  = "Player minimum score before storing PPH"
+	descPlayerMinScoreBeforeStoringPPH = "A player must have scored at least this many points in the current match before his or her PPH will be considered meaningful enough to store in the database."
 }

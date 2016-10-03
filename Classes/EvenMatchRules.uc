@@ -22,7 +22,7 @@ class EvenMatchRules extends GameRules config(EvenMatchPPH) parseconfig;
 const SECONDS_PER_DAY = 86400;
 
 
-var EvenMatchPPH Recent;
+var EvenMatchPPH Recent, RecentMap;
 
 var ONSOnslaughtGame Game;
 var MutTeamBalance EvenMatchMutator;
@@ -49,6 +49,7 @@ function SaveRecentPPH()
 		if (EvenMatchMutator.bDebug)
 			log(Level.TimeSeconds$ " Saving PPH data...", 'EvenMatchDebug');
 		Recent.SaveConfig();
+		RecentMap.SaveConfig();
 	}
 	bSaveNeeded = False;
 }
@@ -58,7 +59,7 @@ Purge outdated PPH data and randomly swap sides if configured.
 */
 function PreBeginPlay()
 {
-	local int i, Diff;
+	local int i, j, Diff;
 	
 	EvenMatchMutator = MutTeamBalance(Owner);
 	
@@ -67,17 +68,41 @@ function PreBeginPlay()
 
 	// remove obsolete entries
 	MatchStartTS = GetTS();
+	// generic part of PPH database
 	Recent = new(None, "EvenMatchPPHDatabase") class'EvenMatchPPH';
+	while (Recent.MyReplacementStatsID.Length > 0 && Recent.MyReplacementStatsID[0] == "") {
+		// just a little cleanup from older EvenMatch versions
+		Recent.MyReplacementStatsID.Remove(0, 1);
+	}
 	if (Recent.PPH.Length == 0) {
 		// always create DB file
 		bSaveNeeded = True;
 	}
 	else {
+		// look for outdated entries
 		for (i = Recent.PPH.Length - 1; i >= 0; --i) {
 			Diff = MatchStartTS - Recent.PPH[i].TS;
 			if (Diff / SECONDS_PER_DAY > EvenMatchMutator.DeletePlayerPPHAfterDaysNotSeen) {
 				// older than X days
 				Recent.PPH.Remove(i, 1);
+				bSaveNeeded = True;
+			}
+		}
+	}
+	// map-specific part of PPH database
+	RecentMap = new(None, string(Level.Outer)) class'EvenMatchPPH';
+	if (RecentMap.PPH.Length == 0) {
+		// always create map-specific entry
+		bSaveNeeded = True;
+	}
+	else {
+		// doesn't make sense to have map-specific data and no generic data for a particular player,
+		// so discard all entries not matching a player in the generic PPH list
+		for (i = RecentMap.PPH.Length - 1; i >= 0; --i) {
+			j = Recent.FindPPHSlot(RecentMap.PPH[i].ID);
+			if (j >= Recent.PPH.Length || RecentMap.PPH[i].ID != Recent.PPH[j].ID) {
+				// not found
+				RecentMap.PPH.Remove(i, 1);
 				bSaveNeeded = True;
 			}
 		}
@@ -118,12 +143,13 @@ simulated function PostNetBeginPlay()
 			// player hasn't configured stats, use a replacement ID,
 			// which will be persisted until the player decides to configure stats
 			Recent = new(None, "EvenMatchPPHDatabase") class'EvenMatchPPH';
-			if (Recent.MyReplacementStatsID == "") {
+			Recent.MyReplacementStatsID.Length = 1;
+			if (Recent.MyReplacementStatsID[0] == "") {
 				// no persisted replacement ID available, create a reasonably unique one
-				Recent.MyReplacementStatsID = "NoStats-"$class'SHA1Hash'.static.GetStringHashString(PC.GetPlayerIDHash() @ Level.Year @ Level.Month @ Level.Day @ Level.Hour @ Level.Minute @ Level.Second @ Level.Millisecond @ Rand(MaxInt));
+				Recent.MyReplacementStatsID[0] = "NoStats-"$class'SHA1Hash'.static.GetStringHashString(PC.GetPlayerIDHash() @ Level.Year @ Level.Month @ Level.Day @ Level.Hour @ Level.Minute @ Level.Second @ Level.Millisecond @ Rand(MaxInt));
 				Recent.SaveConfig();
 			}
-			PC.Mutate("EvenMatch SetPlayerId " $ MatchStartTS @ Recent.MyReplacementStatsID);
+			PC.Mutate("EvenMatch SetPlayerId " $ MatchStartTS @ Recent.MyReplacementStatsID[0]);
 		}
 	}
 }
@@ -228,7 +254,6 @@ function bool CheckScore(PlayerReplicationInfo Scorer)
 					GetPointsPerHour(Level.GRI.PRIArray[i]);
 			}
 		}
-		SaveRecentPPH(); // store recent PPH values
 		return true;
 	}
 	if (Level.GRI.ElapsedTime < MinDesiredFirstRoundDuration && Level.GRI.Teams[0].Score + Level.GRI.Teams[1].Score > 0) {
@@ -257,7 +282,6 @@ function bool CheckScore(PlayerReplicationInfo Scorer)
 		Level.GRI.Teams[1].Score = 0;
 
 		bBalancing = False;
-		SaveRecentPPH(); // store recent PPH values
 		return true;
 	}
 	else {
@@ -266,7 +290,6 @@ function bool CheckScore(PlayerReplicationInfo Scorer)
 			if (Level.GRI.PRIArray[i] != None && !Level.GRI.PRIArray[i].bOnlySpectator)
 				GetPointsPerHour(Level.GRI.PRIArray[i]);
 		}
-		SaveRecentPPH(); // store updated PPH values
 	}
 	return false;
 }
@@ -477,8 +500,8 @@ function float GetPointsPerHour(PlayerReplicationInfo PRI)
 {
 	local PlayerController PC;
 	local string ID;
-	local int Low, High, Middle;
-	local float PPH;
+	local int Index, IndexMap;
+	local float PPH, CurrentPPH, PastPPH, PastPPHMap;
 
 	PC = PlayerController(PRI.Owner);
 	if (PC != None) {
@@ -493,46 +516,100 @@ function float GetPointsPerHour(PlayerReplicationInfo PRI)
 		}
 	}
 	// calculate current PPH
-	PPH = 3600 * FMax(PRI.Score, 0.1) / Max(Level.GRI.ElapsedTime - PRI.StartTime, 10);
+	CurrentPPH = 3600 * FMax(PRI.Score, 0.1) / Max(Level.GRI.ElapsedTime - PRI.StartTime, 10);
+	PastPPH = -1;
+	PastPPHMap = -1;
 	
-	High = Recent.PPH.Length;
-	if (Low < High) do {
-		Middle = (High + Low) / 2;
-		if (Recent.PPH[Middle].ID < ID)
-			Low = Middle + 1;
-		else
-			High = Middle;
-	} until (Low >= High);
+	Index = Recent.FindPPHSlot(ID);
+	IndexMap = RecentMap.FindPPHSlot(ID);
 	
-	if (Level.GRI.bMatchHasBegun && PRI.Score > 0 && Level.GRI.ElapsedTime - PRI.StartTime > 30) {
+	if (Level.GRI.bMatchHasBegun && PRI.Score > EvenMatchMutator.PlayerMinScoreBeforeStoringPPH && Level.GRI.ElapsedTime - PRI.StartTime > EvenMatchMutator.PlayerGameSecondsBeforeStoringPPH) {
+		PPH = CurrentPPH;
+		
 		// already scored, override score from earlier
-		if (Low >= Recent.PPH.Length || Recent.PPH[Low].ID != ID) {
-			Recent.PPH.Insert(Low, 1);
-			Recent.PPH[Low].ID = ID;
-			Recent.PPH[Low].PastPPH = -1;
-			Recent.PPH[Low].CurrentPPH = PPH;
-			Recent.PPH[Low].TS = MatchStartTS;
+		if (Index >= Recent.PPH.Length || Recent.PPH[Index].ID != ID) {
+			Recent.PPH.Insert(Index, 1);
+			Recent.PPH[Index].ID = ID;
+			Recent.PPH[Index].PastPPH = -1;
+			Recent.PPH[Index].CurrentPPH = PPH;
+			Recent.PPH[Index].TS = MatchStartTS;
 			bSaveNeeded = True;
 		}
 		else {
-			if (Recent.PPH[Low].TS != MatchStartTS) {
-				if (Recent.PPH[Low].PastPPH == -1)
-					Recent.PPH[Low].PastPPH = Recent.PPH[Low].CurrentPPH;
-				else
-					Recent.PPH[Low].PastPPH = 0.5 * (Recent.PPH[Low].PastPPH + Recent.PPH[Low].CurrentPPH);
-				Recent.PPH[Low].TS = MatchStartTS;
+			if (Recent.PPH[Index].TS != MatchStartTS) {
+				if (Recent.PPH[Index].PastPPH == -1)
+					Recent.PPH[Index].PastPPH = Recent.PPH[Index].CurrentPPH;
+				else // adjust generic PPH slower than map-specific
+					Recent.PPH[Index].PastPPH = 0.32 * (2.125 * Recent.PPH[Index].PastPPH + Recent.PPH[Index].CurrentPPH);
+				Recent.PPH[Index].TS = MatchStartTS;
 				bSaveNeeded = True;
 			}
-			Recent.PPH[Low].CurrentPPH = PPH;
-			if (Recent.PPH[Low].PastPPH != -1)
-				PPH = 0.5 * (Recent.PPH[Low].PastPPH + Recent.PPH[Low].CurrentPPH);
+			Recent.PPH[Index].CurrentPPH = PPH;
+			if (Recent.PPH[Index].PastPPH != -1)
+				PastPPH = Recent.PPH[Index].PastPPH;
+		}
+		
+		// also update map-specific PPH
+		if (IndexMap >= RecentMap.PPH.Length || RecentMap.PPH[IndexMap].ID != ID) {
+			RecentMap.PPH.Insert(IndexMap, 1);
+			RecentMap.PPH[IndexMap].ID = ID;
+			RecentMap.PPH[IndexMap].PastPPH = -1;
+			RecentMap.PPH[IndexMap].CurrentPPH = PPH;
+			RecentMap.PPH[IndexMap].TS = MatchStartTS;
+			bSaveNeeded = True;
+		}
+		else {
+			if (RecentMap.PPH[IndexMap].TS != MatchStartTS) {
+				if (RecentMap.PPH[IndexMap].PastPPH == -1)
+					RecentMap.PPH[IndexMap].PastPPH = RecentMap.PPH[IndexMap].CurrentPPH;
+				else
+					RecentMap.PPH[IndexMap].PastPPH = 0.5 * (RecentMap.PPH[IndexMap].PastPPH + RecentMap.PPH[IndexMap].CurrentPPH);
+				RecentMap.PPH[IndexMap].TS = MatchStartTS;
+				bSaveNeeded = True;
+			}
+			RecentMap.PPH[IndexMap].CurrentPPH = PPH;
+			if (RecentMap.PPH[IndexMap].PastPPH != -1)
+				PastPPHMap = RecentMap.PPH[IndexMap].PastPPH;
 		}
 	}
-	else if (Low < Recent.PPH.Length && Recent.PPH[Low].ID == ID) {
-		// No score yet, use PPH from earlier
-		PPH = Recent.PPH[Low].PastPPH;
+	else {
+		PPH = -1;
+		if (Index < Recent.PPH.Length && Recent.PPH[Index].ID == ID) {
+			// No score yet, use PPH from earlier
+			PastPPH = Recent.PPH[Index].PastPPH;
+		}
+		if (IndexMap < RecentMap.PPH.Length && RecentMap.PPH[IndexMap].ID == ID) {
+			// No score yet, use PPH from earlier
+			PastPPHMap = RecentMap.PPH[IndexMap].PastPPH;
+		}
 	}
-	return PPH;
+	
+	// combine current and past PPH values in a meaningful way
+	switch (int(PPH == -1) + 2 * int(PastPPH == -1) + 4 * int(PastPPHMap == -1)) {
+		case 0: // all three PPH values available
+			return 0.4 * (PPH + PastPPHMap + 0.5 * PastPPH);
+			
+		case 1: // no current (meaningful) score yet, but both past PPH available
+			return 0.8 * (PastPPHMap + 0.25 * PastPPH);
+			
+		case 2: // no past generic PPH (should not be possible)
+			return 0.5 * (PPH + PastPPHMap);
+			
+		case 3: // only past map-specific PPH (should not be possible either)
+			return PastPPHMap;
+			
+		case 4: // no past map-specific PPH
+			return 0.5 * (PPH + PastPPHMap);
+			
+		case 5: // only past generic PPH
+			return PastPPH;
+			
+		case 6: // only current PPH (new player)
+			return PPH;
+			
+		default: // none of the above (should not be possible)
+			return CurrentPPH;
+	}
 }
 
 

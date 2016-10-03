@@ -1,7 +1,7 @@
 [DamTypeTeamChange]
-DeathString="%o musste das Team wechseln."
-FemaleSuicide="%o musste das Team wechseln."
-MaleSuicide="%o musste das Team wechseln."
+DeathString="%o musste das Team automatisch wechseln."
+FemaleSuicide="%o musste das Team automatisch wechseln."
+MaleSuicide="%o musste das Team automatisch wechseln."
 
 [MutTeamBalance]
 lblActivationDelay="Aktivierungsverzögerung"
@@ -51,7 +51,11 @@ descMinPlayerCount="Die minimal erforderliche Anzahl an Spielern im Spiel, bevor
 lblTeamsCallString="Chattext für Teams-Ruf"
 descTeamsCallString="Spieler können diesen Text per 'say' im Chat als Alternative für 'mutate teams' schreiben, um eine manuelle Balanceprüfung auszulösen."
 lblDeletePlayerPPHAfterDaysNotSeen="Lösche Spieler-PPH nach X Tagen Inaktivität"
-descDeletePlayerPPHAfterDaysNotSeen="Um die PPH-Daten (Punkte pro Stunde) nicht grenzenlos zu stapeln und möglicherweise die Performance zu beeinträchtigen, werden PPH-Daten von Spielern gelöscht, die diese Anzahl von Tagen nicht gesehen wurden."
+descDeletePlayerPPHAfterDaysNotSeen="Um die PPH-Daten (Punkte pro Stunde) nicht grenzenlos zu stapeln, werden PPH-Daten von Spielern gelöscht, die diese Anzahl von Tagen nicht gesehen wurden."
+lblPlayerGameSecondsBeforeStoringPPH="Spieler-Sekunden im Spiel bis PPH gespeichert wird"
+descPlayerGameSecondsBeforeStoringPPH="Ein Spieler muss mindestens diese Anzahl an Sekunden im Spiel sein, damit es Sinn macht, seine PPH-Daten (Punkte pro Stunde) in der Datenbank zu speichern."
+lblPlayerMinScoreBeforeStoringPPH="Minimaler Spieler-Punktestand bis PPH gespeichert wird"
+descPlayerMinScoreBeforeStoringPPH="Ein Spieler muss mindestens diese Menge an Punkten gesammelt haben, damit es Sinn macht, seine PPH-Daten (Punkte pro Stunde) in der Datenbank zu gespeichern."
 FriendlyName="Team-Balance (nur Onslaught)"
 Description="Spezielle Team-Balancierungsregeln für öffentliche Onslaught-Spiele."
 
