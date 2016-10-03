@@ -37,7 +37,9 @@ INI setting | Name in webadmin | Default value | Description
 `UndoSwitchCheckTime` | Undo switch check time | 30 | A player will usually not be allowed to undo a forced team switch by EvenMatch for this number of seconds.
 `MinPlayerCount` | Minimum player count | 2 | Minimum player count required before doing any kind of balancing.
 `TeamsCallString` | Teams call chat text | *(empty)* | Players can 'say' this text in the chat to manually trigger a team balance check as alternative to the console command 'mutate teams'.
-`DeletePlayerPPHAfterDaysNotSeen` | Delete a player's PPH after X days inactivity | 30 | To keep PPH data from piling up indefinitely and affecting performance, delete PPH of players who have not been seen in this number of days.
+`DeletePlayerPPHAfterDaysNotSeen` | Delete a player's PPH after X days inactivity | 30 | To keep PPH data from piling up indefinitely, delete PPH of players who have not been seen in this number of days.
+`PlayerGameSecondsBeforeStoringPPH` | Player in-game seconds before storing PPH | 60 | A player must have accummulated at least this number of seconds play time in the current match before his or her PPH will be considered meaningful enough to store in the database.
+`PlayerMinScoreBeforeStoringPPH` | Player minimum score before storing PPH | 10 | A player must have scored at least this many points in the current match before his or her PPH will be considered meaningful enough to store in the database.
 
 ## Participating
 If you are a member of the Omnipotents or CEONSS communities, you can participate directly in the corresponding forums. Each of them has an Even Match thread in the [Mappers' Corner](http://forum.omnipotents.com/forumdisplay.php?f=47) and [The Creative Corner](http://ceonss.net/viewforum.php?f=14), respectively. Of course you are also free to contribute code via pull requests or report issues via [Github's issue tracker](https://github.com/TheRealWormbo/EvenMatch/issues).
