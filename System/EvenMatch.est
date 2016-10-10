@@ -1,7 +1,7 @@
 [DamTypeTeamChange]
-DeathString="%o se ha forzado su cambio de equipo."
-FemaleSuicide="%o se ha forzado su cambio de equipo."
-MaleSuicide="%o se ha forzado su cambio de equipo."
+DeathString="%o me vi forzado a cambiar automáticamente de equipo."
+FemaleSuicide="%o me vi forzado a cambiar automáticamente de equipo."
+MaleSuicide="%o me vi forzado a cambiar automáticamente de equipo."
 
 [MutTeamBalance]
 lblActivationDelay="Retardo de activación"
@@ -51,11 +51,11 @@ descMinPlayerCount="Recuento de jugadores mínimos requerido antes de realizar cu
 lblTeamsCallString="Mensaje de chat de llamadas de los equipos."
 descTeamsCallString="Los jugadores pueden escribir este texto en el chat para activar manualmente una comprobación del equilibrio entre los equipos como alternativa al comando de consola 'mutar equipos'."
 lblDeletePlayerPPHAfterDaysNotSeen="Eliminar los PPH de un jugador tras X días de inactividad."
-descDeletePlayerPPHAfterDaysNotSeen="Para evitar que los datos PPH se acumulen indefinidamente y afecten al rendimiento, elimina los PPH de los jugadores que no han sido vistos durante este número de días."
-lblPlayerGameSecondsBeforeStoringPPH="Player in-game seconds before storing PPH"
-descPlayerGameSecondsBeforeStoringPPH="A player must have accummulated at least this number of seconds play time in the current match before his or her PPH will be considered meaningful enough to store in the database."
-lblPlayerMinScoreBeforeStoringPPH="Player minimum score before storing PPH"
-descPlayerMinScoreBeforeStoringPPH="A player must have scored at least this many points in the current match before his or her PPH will be considered meaningful enough to store in the database."
+descDeletePlayerPPHAfterDaysNotSeen="Para evitar que los datos del PPH se amontonen indefinidamente (y afecten al rendimiento), borra el PPH de los jugadores que no han aparecido en este número de días."
+lblPlayerGameSecondsBeforeStoringPPH="El jugador en el juego segundos antes de guardar el PPH"
+descPlayerGameSecondsBeforeStoringPPH="Un jugador debe haber acumulado al menos este número de segundos de tiempo de juego en el partido actual antes de que su PPH s considere lo bastante significativo como para guardarlo en la base de datos."
+lblPlayerMinScoreBeforeStoringPPH="Puntuación mínima del jugador antes de guarda el PPH"
+descPlayerMinScoreBeforeStoringPPH="Un jugador debe haber obtenido al menos todos estos puntos en el partido actual antes de que su PPH se considere significativo como para guardar en la base de datos."
 FriendlyName="Equilibrio entre equipos (solo partidos de arremetida)."
 Description="Reglas especiales de equilibrio entre equipos para partidos de arremetida públicos."
 
